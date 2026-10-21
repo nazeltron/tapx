@@ -1,258 +1,170 @@
 package dev.tapx
 
-import net.kyori.adventure.bossbar.BossBar
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.title.Title
-import org.bukkit.Material
+import dev.tapx.screen.GameScreen
+import dev.tapx.screen.MapScreen
+import dev.tapx.screen.Palette
+import dev.tapx.screen.ScreenHost
+import dev.tapx.screen.Sfx
+import dev.tapx.screen.TopEntry
 import org.bukkit.Sound
 import org.bukkit.SoundCategory
 import org.bukkit.entity.Player
-import java.time.Duration
-import kotlin.random.Random
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import java.util.logging.Level
 
-enum class Sfx(val sound: Sound, val volume: Float, val pitch: Float) {
-    HIT(Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.35f, 1.4f),
-    CRIT(Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.6f, 1.0f),
-    KILL(Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.6f, 1.2f),
-    BOSS(Sound.ENTITY_ENDER_DRAGON_GROWL, 0.35f, 1.3f),
-    BOSS_KILL(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.6f, 1.2f),
-    LEVEL_UP(Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.0f),
-    BUY(Sound.BLOCK_NOTE_BLOCK_PLING, 0.6f, 1.6f),
-    CLICK(Sound.UI_BUTTON_CLICK, 0.5f, 1.2f),
-    ERROR(Sound.ENTITY_VILLAGER_NO, 0.5f, 1.0f),
-    THUNDER(Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.4f, 1.4f),
-    SPELL(Sound.ENTITY_EVOKER_CAST_SPELL, 0.6f, 1.2f),
-    PET(Sound.ENTITY_FOX_AMBIENT, 0.8f, 1.4f),
-    CHEST(Sound.BLOCK_CHEST_OPEN, 0.7f, 1.0f),
-    LEGENDARY(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.0f),
-    EQUIP(Sound.ITEM_ARMOR_EQUIP_DIAMOND, 0.7f, 1.0f),
-    WISP(Sound.ENTITY_ALLAY_ITEM_GIVEN, 0.8f, 1.2f),
-    FAIL(Sound.ENTITY_WITHER_SKELETON_AMBIENT, 0.5f, 0.8f),
-    ACHIEVEMENT(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.5f, 1.5f),
-}
-
-/** One online player's game: owns the [Game], the open menu, and all the feedback (sounds, flashes, boss bar). */
-class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : GameEvents {
-    val game = Game(data, this)
+/**
+ * One online player's game. While the player is on the game screen, a background thread runs
+ * the game loop (input -> game update -> draw -> send changed pixels) 10 times per second.
+ * All access to [game] happens on that thread while active; use [post] from elsewhere.
+ */
+class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : GameEvents, ScreenHost {
+    override val game = Game(data, this)
     val d get() = game.d
+    val screen = GameScreen(this, SCREEN_COLS * 128, SCREEN_ROWS * 128)
+    private val mapColors = ByteArray(screen.width * screen.height)
 
-    var menu: Menu? = null
-    var active = false
-    private var ticks = 0L
-    private val bossBar = BossBar.bossBar(Component.empty(), 1f, BossBar.Color.RED, BossBar.Overlay.NOTCHED_10)
+    @Volatile var active = false
+        private set
+    private var map: MapScreen? = null
+    private var task: ScheduledFuture<*>? = null
+    private val inbox = ConcurrentLinkedQueue<() -> Unit>()
+    @Volatile private var cursorX = -1
+    @Volatile private var cursorY = -1
+    private var frames = 0L
+    private val lastSound = HashMap<Sfx, Long>()
 
-    // Short-lived visual effects (seconds remaining).
-    var flashMat: Material? = null
-    private var flashT = 0.0
-    var swingT = 0.0
-    var petT = 0.0
-    var coinT = 0.0
-    var lastGold = 0.0
-    var lastHit = ""
-    var lastHitT = 0.0
-    val allySwing = HashMap<String, Double>()
-    var wispSlot = -1
-    private var wispT = 0.0
-    private var wispTimer = Random.nextDouble(30.0, 60.0)
+    override val playerName: String get() = player.name
+    override val version: String get() = plugin.version
 
-    // Tap rate limiting (stops auto-clickers from going wild).
-    private var tapWindowStart = 0L
-    private var tapsInWindow = 0
-
-    fun open(m: Menu) {
-        if (!active) resume()
-        menu = m
-        m.draw()
-        // Switch screens on the next tick; opening inventories inside a click event is unsafe.
-        plugin.server.scheduler.runTask(plugin, Runnable { if (menu === m && player.isOnline) player.openInventory(m.inventory) })
+    /** Run [action] on the game thread (or right away when the game isn't running). */
+    fun post(action: () -> Unit) {
+        if (active) inbox.add(action) else action()
     }
 
-    /** Called when the player opens TapX after having it closed: pay out time-away earnings. */
-    private fun resume() {
-        active = true
-        val away = (System.currentTimeMillis() - d.lastSeen) / 1000.0
-        if (away > 30) {
-            val g = game.applyOffline(away, plugin.config.getDouble("max-offline-hours", 12.0))
-            if (g > 0) msg("<gray>Welcome back! You were away <white>${fmtTime(away)}</white>. Your allies earned $GOLD <yellow>${fmt(g)} gold</yellow>.")
-        }
-        d.lastSeen = System.currentTimeMillis()
-        player.showBossBar(bossBar)
+    fun setCursor(pos: Pair<Int, Int>?) {
+        cursorX = pos?.first ?: -1
+        cursorY = pos?.second ?: -1
     }
 
-    fun pause() {
-        active = false
-        menu = null
-        d.lastSeen = System.currentTimeMillis()
-        player.hideBossBar(bossBar)
-        plugin.save(this)
-    }
+    private var clickWindow = 0L
+    private var clicksInWindow = 0
 
-    fun tick(dt: Double) {
-        if (!active) return
-        ticks++
-        game.update(dt)
-        d.lastSeen = System.currentTimeMillis()
-
-        flashT -= dt
-        if (flashT <= 0) flashMat = null
-        swingT -= dt; petT -= dt; coinT -= dt; lastHitT -= dt
-        allySwing.replaceAll { _, v -> v - dt }
-        if (Random.nextDouble() < 0.12) {
-            HEROES.filter { game.heroLvl(it.id) > 0 }.randomOrNull()?.let { allySwing[it.id] = 0.3 }
-        }
-        updateWisp(dt)
-        if (ticks % 10 == 0L) game.checkAchievements()
-        updateBossBar()
-
-        val m = menu ?: return
-        if (ticks % m.refreshEvery == 0L) m.draw()
-    }
-
-    private fun updateWisp(dt: Double) {
-        if (wispSlot >= 0) {
-            wispT -= dt
-            if (wispT <= 0) wispSlot = -1
-        } else {
-            wispTimer -= dt
-            if (wispTimer <= 0 && menu is BattleMenu) {
-                wispSlot = listOf(22, 26, 35).random()
-                wispT = 8.0
-                wispTimer = Random.nextDouble(45.0, 90.0)
-            }
-        }
-    }
-
-    fun catchWisp() {
-        if (wispSlot < 0) return
-        wispSlot = -1
-        val reward = game.wispReward()
-        sfx(Sfx.WISP)
-        actionBar("<aqua>✦ Wisp caught! <white>$reward")
-        menu?.draw()
-    }
-
-    private fun updateBossBar() {
-        val m = game.monster
-        if (m == null) return
-        val frac = (m.hp / m.maxHp).toFloat().coerceIn(0f, 1f)
-        bossBar.progress(frac)
-        if (m.boss && !m.dead) {
-            bossBar.color(BossBar.Color.PURPLE)
-            bossBar.name(mm("<dark_red><b>☠ ${m.name}</b> <white>${fmt(kotlin.math.ceil(m.hp))} HP <gray>| <yellow>${"%.1f".format(game.bossTimer)}s"))
-        } else {
-            bossBar.color(if (m.mimic) BossBar.Color.YELLOW else BossBar.Color.RED)
-            bossBar.name(mm("<red>${m.name} <white>${fmt(kotlin.math.ceil(m.hp))} HP <gray>| Stage ${d.stage} · ${if (d.farming) "farming" else "wave ${minOf(d.wave + 1, WAVES)}/$WAVES"}"))
-        }
-    }
-
-    /** A click on the battle area. */
-    fun playerTap() {
+    /** A left-click. Limited per second so auto-clickers can't break the game. */
+    fun click() {
         val now = System.currentTimeMillis()
-        if (now - tapWindowStart >= 1000) {
-            tapWindowStart = now
-            tapsInWindow = 0
+        if (now - clickWindow >= 1000) { clickWindow = now; clicksInWindow = 0 }
+        if (++clicksInWindow > plugin.config.getInt("max-taps-per-second", 20)) return
+        post { screen.click() }
+    }
+    fun scroll(delta: Int) = post { screen.scroll(delta) }
+
+    fun start(screenMap: MapScreen) {
+        if (active) return
+        map = screenMap
+        val away = (System.currentTimeMillis() - d.lastSeen) / 1000.0
+        if (away > 30) screen.welcome(away, game.applyOffline(away, plugin.config.getDouble("max-offline-hours", 12.0)))
+        d.lastSeen = System.currentTimeMillis()
+        screenMap.spawn()
+        active = true
+        val period = (1000 / plugin.config.getInt("fps", 10).coerceIn(2, 20)).toLong()
+        task = plugin.gameThreads.scheduleAtFixedRate(::loop, 0, period, TimeUnit.MILLISECONDS)
+    }
+
+    /** Stop the game loop and remove the screen. Safe to call from any thread. */
+    fun stop() {
+        if (!active) return
+        active = false
+        task?.cancel(false)
+        task = null
+        map?.remove()
+        map = null
+        // apply anything still queued so it isn't lost
+        while (true) inbox.poll()?.invoke() ?: break
+        d.lastSeen = System.currentTimeMillis()
+    }
+
+    private fun loop() {
+        try {
+            val dt = 1.0 / plugin.config.getInt("fps", 10).coerceIn(2, 20)
+            while (true) inbox.poll()?.invoke() ?: break
+            if (!active) return
+            screen.cursorX = cursorX
+            screen.cursorY = cursorY
+            game.update(dt)
+            screen.update(dt)
+            d.lastSeen = System.currentTimeMillis()
+            if (frames++ % 10 == 0L) game.checkAchievements()
+            screen.render()
+            Palette.convert(screen.pixels, mapColors)
+            map?.push(mapColors)
+        } catch (e: Throwable) {
+            plugin.logger.log(Level.WARNING, "TapX frame failed for ${player.name}", e)
         }
-        if (++tapsInWindow > plugin.config.getInt("max-taps-per-second", 20)) return
-        game.tap(false)
     }
 
-    fun doPrestige() {
-        val gained = game.prestige()
-        sfx(Sfx.LEVEL_UP)
-        msg("<light_purple><b>Reborn!</b> <gray>You earned $RELIC <red>${fmt(gained)} relics</red>. Spend them in the Artifacts tab.")
-        open(ArtifactsMenu(this))
+    // ---------------------------------------------------------- ScreenHost
+    override fun sfx(s: Sfx) {
+        if (!d.sound) return
+        val now = System.currentTimeMillis()
+        if (now - (lastSound[s] ?: 0) < 60) return
+        lastSound[s] = now
+        val (sound, vol, pitch) = when (s) {
+            Sfx.HIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.3f, 1.5f)
+            Sfx.CRIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.6f, 1.0f)
+            Sfx.KILL -> Triple(Sound.ENTITY_GENERIC_DEATH, 0.3f, 1.4f)
+            Sfx.COIN -> Triple(Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.25f, 1.6f)
+            Sfx.BOSS -> Triple(Sound.ENTITY_ENDER_DRAGON_GROWL, 0.3f, 1.3f)
+            Sfx.BOSS_KILL -> Triple(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.5f, 1.2f)
+            Sfx.LEVEL_UP -> Triple(Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.0f)
+            Sfx.BUY -> Triple(Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1.6f)
+            Sfx.CLICK -> Triple(Sound.UI_BUTTON_CLICK, 0.4f, 1.2f)
+            Sfx.ERROR -> Triple(Sound.ENTITY_VILLAGER_NO, 0.4f, 1.0f)
+            Sfx.THUNDER -> Triple(Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.35f, 1.4f)
+            Sfx.SPELL -> Triple(Sound.ENTITY_EVOKER_CAST_SPELL, 0.5f, 1.2f)
+            Sfx.PET -> Triple(Sound.ENTITY_FOX_AMBIENT, 0.7f, 1.4f)
+            Sfx.CHEST -> Triple(Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f)
+            Sfx.LEGENDARY -> Triple(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.0f)
+            Sfx.EQUIP -> Triple(Sound.ITEM_ARMOR_EQUIP_DIAMOND, 0.6f, 1.0f)
+            Sfx.WISP -> Triple(Sound.ENTITY_ALLAY_ITEM_GIVEN, 0.7f, 1.2f)
+            Sfx.FAIL -> Triple(Sound.ENTITY_WITHER_SKELETON_AMBIENT, 0.4f, 0.8f)
+            Sfx.ACHIEVEMENT -> Triple(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.4f, 1.5f)
+        }
+        // Bukkit calls belong on the main thread.
+        plugin.server.scheduler.runTask(plugin, Runnable {
+            if (player.isOnline) player.playSound(player.location, sound, SoundCategory.MASTER, vol, pitch)
+        })
     }
 
-    fun resetProgress() {
+    override fun exit() {
+        plugin.server.scheduler.runTask(plugin, Runnable { plugin.arcade.leave(player) })
+    }
+
+    override fun leaderboard(): List<TopEntry> = plugin.leaderboard()
+
+    override fun resetProgress() {
+        val back = d.returnTo
         game.d = PlayerData().apply {
             name = player.name
             gems = plugin.config.getLong("starting-gems", 100)
+            returnTo = back
         }
         game.monster = null
-        msg("<red>Your TapX progress has been reset.")
-        open(BattleMenu(this))
     }
 
-    // ---------------------------------------------------------- feedback helpers
-    fun sfx(s: Sfx) {
-        if (d.sound) player.playSound(player.location, s.sound, SoundCategory.MASTER, s.volume, s.pitch)
-    }
+    // ---------------------------------------------------------- GameEvents (forwarded to the screen)
+    override fun onTap(damage: Double, crit: Boolean, auto: Boolean) = screen.onTap(damage, crit, auto)
+    override fun onKill(m: Monster, gold: Double, gems: Int) = screen.onKill(m, gold, gems)
+    override fun onSpawn(m: Monster) = screen.onSpawn(m)
+    override fun onStage(skipped: Int) = screen.onStage(skipped)
+    override fun onBossFail() = screen.onBossFail()
+    override fun onSkill(id: String, damage: Double) = screen.onSkill(id, damage)
+    override fun onPetAttack(damage: Double) = screen.onPetAttack(damage)
+    override fun onAchievement(group: AchGroup, target: Double, gems: Int) = screen.onAchievement(group, target, gems)
 
-    fun msg(text: String) = player.sendMessage(mm("<dark_gray>[<gold>TapX<dark_gray>] <reset>$text"))
-    private fun actionBar(text: String) = player.sendActionBar(mm(text))
-
-    private fun flash(mat: Material, seconds: Double = 0.15) {
-        flashMat = mat
-        flashT = seconds
-    }
-
-    private fun title(main: String, sub: String = "") = player.showTitle(
-        Title.title(mm(main), mm(sub), Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(1200), Duration.ofMillis(300)))
-    )
-
-    // ---------------------------------------------------------- game events
-    override fun onTap(damage: Double, crit: Boolean, auto: Boolean) {
-        swingT = 0.15
-        if (crit) {
-            flash(Material.ORANGE_STAINED_GLASS_PANE)
-            sfx(Sfx.CRIT)
-            lastHit = "<gold><b>CRIT! ${fmt(damage)}"
-            actionBar("<gold><b>✦ CRITICAL ${fmt(damage)}!")
-        } else {
-            if (flashMat == null) flash(Material.WHITE_STAINED_GLASS_PANE, 0.1)
-            if (!auto || ticks % 3 == 0L) sfx(Sfx.HIT)
-            lastHit = "<white>Hit for ${fmt(damage)}"
-            if (!auto) actionBar("<white>⚔ ${fmt(damage)}")
-        }
-        lastHitT = 0.6
-    }
-
-    override fun onKill(m: Monster, gold: Double, gems: Int) {
-        coinT = 0.45
-        lastGold = gold
-        sfx(if (m.boss) Sfx.BOSS_KILL else Sfx.KILL)
-        if (gems > 0) msg("<aqua>The boss dropped $GEM $gems gem${if (gems > 1) "s" else ""}!")
-        if (m.mimic) actionBar("<gold>The mimic dropped $GOLD ${fmt(gold)} gold!")
-    }
-
-    override fun onSpawn(m: Monster) {
-        if (m.boss) {
-            sfx(Sfx.BOSS)
-            title("<dark_red><b>BOSS BATTLE!", "<red>${m.name}")
-        } else if (m.mimic) actionBar("<gold><b>A treasure mimic appears! <yellow>(12x gold)")
-    }
-
-    override fun onStage(skipped: Int) {
-        sfx(Sfx.LEVEL_UP)
-        if (skipped > 1) msg("<green>Warp Boots! You skipped to stage ${d.stage}.")
-        val w = worldFor(d.stage)
-        if (worldFor(d.stage - skipped) != w) title("<${w.color}><b>${w.name}", "<gray>Stage ${d.stage}")
-    }
-
-    override fun onBossFail() {
-        sfx(Sfx.FAIL)
-        msg("<red>The boss escaped!</red> <gray>Get stronger, then press <red>Fight Boss</red>.")
-    }
-
-    override fun onSkill(id: String, damage: Double) {
-        sfx(Sfx.SPELL)
-        val name = SKILLS.first { it.id == id }.name
-        if (id == "thunder") {
-            sfx(Sfx.THUNDER)
-            flash(Material.LIGHT_BLUE_STAINED_GLASS_PANE, 0.5)
-            actionBar("<aqua><b>⚡ THUNDER STRIKE ${fmt(damage)}!")
-        } else actionBar("<yellow><b>$name!")
-    }
-
-    override fun onPetAttack(damage: Double) {
-        petT = 0.4
-        flash(Material.LIME_STAINED_GLASS_PANE, 0.3)
-        sfx(Sfx.PET)
-        actionBar("<green><b>${petDef(d.activePet)?.name ?: "Pet"} strikes for ${fmt(damage)}!")
-    }
-
-    override fun onAchievement(group: AchGroup, target: Double, gems: Int) {
-        sfx(Sfx.ACHIEVEMENT)
-        msg("<gold>★ ${group.name}: <white>${group.text(target)} <aqua>+$gems gems")
+    companion object {
+        const val SCREEN_COLS = 7
+        const val SCREEN_ROWS = 4
     }
 }

@@ -11,3 +11,15 @@ max-taps-per-second: 20
 
 # How often to save players who are playing, in minutes.
 autosave-minutes: 5
+
+# --- Game screen ---
+# The game is shown on a wall of maps in a private void world (no resource pack needed).
+# Name of that world (created automatically).
+arcade-world: tapx_arcade
+# The field of view (degrees) the screen is sized for. Players using a different FOV can
+# change it in their video settings; 70 is Minecraft's default.
+screen-fov: 70
+# Screen updates per second (higher = smoother, more bandwidth).
+fps: 10
+# Background threads used to draw screens.
+render-threads: 2

@@ -1,6 +1,5 @@
 package dev.tapx
 
-import org.bukkit.Material
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.ln
@@ -21,18 +20,17 @@ interface GameEvents {
     fun onAchievement(group: AchGroup, target: Double, gems: Int) {}
 }
 
-class Monster(
-    val maxHp: Double, val boss: Boolean, val mimic: Boolean,
-    val name: String, val icon: Material, val kind: String,
-) {
+class Monster(val maxHp: Double, val boss: Boolean, val mimic: Boolean, val name: String, val seed: Long) {
     var hp = maxHp
     var dead = false
     var age = 0.0
+    var deathT = 0.0
+    var hitT = 0.0
 }
 
 class GearRoll(val gear: Gear, val isNew: Boolean)
 
-/** All rules of the game for one player. No Bukkit calls besides Material, so it is easy to reason about. */
+/** All rules of the game for one player. No Bukkit calls, so it can run on any thread. */
 class Game(var d: PlayerData, private val events: GameEvents) {
     var monster: Monster? = null
     var bossTimer = 0.0
@@ -111,17 +109,14 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         val boss = !d.farming && d.wave >= WAVES
         val mimic = !boss && Random.nextDouble() < 0.025 + 0.01 * art("key")
         val hp = if (boss) bossHp(d.stage) else monsterHp(d.stage)
-        val world = worldFor(d.stage)
         // Bosses are seeded by stage so a retried boss is the same one.
-        val rnd = if (boss) Random(d.stage * 7919L + 13) else Random
+        val seed = if (boss) d.stage * 7919L + 13 else Random.nextLong()
+        val rnd = Random(seed)
         val baseName = NAME_A.random(rnd) + NAME_B.random(rnd)
         val m = when {
-            mimic -> Monster(hp, false, true, "Treasure Mimic", Material.CHEST, "Mimic")
-            boss -> Monster(hp, true, false, "$baseName ${TITLES.random(rnd)}", world.boss, "Boss")
-            else -> {
-                val mob = world.mobs.random(rnd)
-                Monster(hp, false, false, baseName, mobEgg(mob), mobLabel(mob))
-            }
+            mimic -> Monster(hp, false, true, "Treasure Mimic", seed)
+            boss -> Monster(hp, true, false, "$baseName ${TITLES.random(rnd)}", seed)
+            else -> Monster(hp, false, false, baseName, seed)
         }
         monster = m
         if (boss) bossTimer = bossTime()

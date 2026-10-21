@@ -1,0 +1,7 @@
+{
+  "name": "tapx-bot-test",
+  "private": true,
+  "description": "Joins a local test server as a bot, opens /tapx and rebuilds the map screen into PNGs from the packets a client receives.",
+  "scripts": { "test": "node screen.js shots" },
+  "dependencies": { "mineflayer": "^4.33.0", "pngjs": "^7.0.0" }
+}

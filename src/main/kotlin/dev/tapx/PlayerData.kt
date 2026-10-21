@@ -29,6 +29,8 @@ class PlayerData {
     /** Buy multiplier: 1, 10, 100, or 0 for MAX. */
     var mult = 1
     var lastSeen = System.currentTimeMillis()
+    /** Where to send the player back to when they leave the game screen ("world;x;y;z;yaw;pitch"). */
+    var returnTo: String? = null
 }
 
 class Stats {
