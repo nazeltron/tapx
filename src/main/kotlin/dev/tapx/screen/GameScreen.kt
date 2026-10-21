@@ -70,6 +70,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private val ta get() = floor(t * 4) / 4
     private var tab = "hero"
     private var scroll = 0.0
+    /** Dragging the scroll bar: the list follows the cursor until a click or the cursor leaves the bar. */
+    private var dragging = false
     private var listContentH = 0
     private var modal: Modal? = null
     private var footer = ""
@@ -101,7 +103,6 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private var flashColor = Color.WHITE
     private var heroAtk = 0.0
     private var petAtk = 0.0
-    private val allyTimers = HashMap<String, Double>()
     private val allyAtk = HashMap<String, Double>()
     private var wisp: DoubleArray? = null // x, y, baseY, t
     private var wispTimer = Random.nextDouble(25.0, 50.0)
@@ -117,10 +118,14 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         val k = 7.0 * d.cursorSpeed.coerceIn(0.25, 4.0)
         curX = clamp(curX + dYaw * k, 0.0, width - 1.0)
         curY = clamp(curY + dPitch * k, 0.0, height - 1.0)
+        if (dragging) {
+            if (modal != null || curX < SB_X - 40 || curX > SB_X + SB_W + 40) dragging = false else dragTo(curY)
+        }
     }
 
     /** Left-click (or space): press the button under the cursor, otherwise attack. */
     fun click() {
+        if (dragging) { dragging = false; return }
         val b = buttonAt(curX.toInt(), curY.toInt())
         if (b != null) { b.action(); return }
         if (modal == null && curX.toInt() in BX until BX + BW && curY.toInt() in BY + 40 until BY + BH) g.tap(false)
@@ -139,7 +144,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     /** Movement keys (WASD), jump (space) and sneak (shift), as pressed/released. */
     fun input(forward: Boolean, back: Boolean, left: Boolean, right: Boolean, jump: Boolean, sneak: Boolean, prevJump: Boolean, prevSneak: Boolean) {
         fun dir(name: String, on: Boolean, dx: Int, dy: Int) {
-            if (on && name !in held) { held[name] = 0.4; move(dx, dy) }
+            if (on && name !in held) { held[name] = 0.4; if (dy == 0 || !overList()) move(dx, dy) }
             if (!on) held.remove(name)
         }
         dir("up", forward, 0, -1); dir("down", back, 0, 1); dir("left", left, -1, 0); dir("right", right, 1, 0)
@@ -181,6 +186,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     fun update(dt: Double) {
         t += dt
         for (k in held.keys.toList()) {
+            if ((k == "up" || k == "down") && overList()) { scrollBy((if (k == "up") -520 else 520) * dt); continue }
             val left = held[k]!! - dt
             if (left <= 0) {
                 held[k] = 0.12
@@ -218,20 +224,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         val si = shots.iterator()
         while (si.hasNext()) { val s = si.next(); s.t += dt; if (s.t >= s.dur) { si.remove(); burst(s.x1, s.y1, s.color, 4, 120.0, 3.0) } }
 
-        val m = g.monster
-        if (m != null && !m.dead) HEROES.forEachIndexed { i, h ->
-            if (g.heroLvl(h.id) == 0) return@forEachIndexed
-            allyAtk[h.id]?.let { a -> if (a > 0) allyAtk[h.id] = if (a + dt * 3.5 >= 1) 0.0 else a + dt * 3.5 }
-            val left = (allyTimers[h.id] ?: Random.nextDouble(1.5)) - dt
-            if (left <= 0) {
-                allyTimers[h.id] = Random.nextDouble(1.1, 1.9); allyAtk[h.id] = 0.0001
-                val (ax, ay, s) = allyPos(i); val (cx, cy) = monsterCenter()
-                val w = h.look.weapon
-                val col = h.look.glow?.let(::hex) ?: when (w) { "bow" -> hex("dddddd"); "gun" -> hex("ffe08a"); "leaf" -> hex("7bd65a"); else -> Color.WHITE }
-                shots += Shot(w, ax + 10, ay - 30 * s, cx + Random.nextDouble(-25.0, 25.0), cy + Random.nextDouble(-30.0, 30.0), 0.0,
-                    if (w == "gun") 0.15 else 0.4, if (w == "bow") 40.0 else if (w == "gun") 0.0 else 20.0, col)
-            } else allyTimers[h.id] = left
-        }
+        for ((id, a) in allyAtk) if (a > 0) allyAtk[id] = if (a + dt * 3.5 >= 1) 0.0 else a + dt * 3.5
 
         val wp = wisp
         if (wp == null) {
@@ -335,6 +328,20 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         floater(fmt(damage), cx - 20, cy - 50, hex("9bff7a"), 2, vx = 0.0, vy = -100.0)
     }
 
+    /** An ally's attack (once per second each): swing, a projectile and a small damage number. */
+    override fun onAllyAttack(id: String, damage: Double) {
+        val i = HEROES.indexOfFirst { it.id == id }
+        if (i < 0) return
+        val h = HEROES[i]
+        allyAtk[id] = 0.0001
+        val (ax, ay, s) = allyPos(i); val (cx, cy) = monsterCenter()
+        val w = h.look.weapon
+        val col = h.look.glow?.let(::hex) ?: when (w) { "bow" -> hex("dddddd"); "gun" -> hex("ffe08a"); "leaf" -> hex("7bd65a"); else -> Color.WHITE }
+        val tx = cx + Random.nextDouble(-20.0, 20.0); val ty = cy + Random.nextDouble(-25.0, 25.0)
+        shots += Shot(w, ax + 10, ay - 30 * s, tx, ty, 0.0, if (w == "gun") 0.1 else 0.22, if (w == "bow") 30.0 else if (w == "gun") 0.0 else 16.0, col)
+        floater(fmt(damage), tx, ty - 20, hex("bfe4ff"), 1, vy = -70.0, life = 0.8)
+    }
+
     override fun onAchievement(group: AchGroup, target: Double, gems: Int) {
         host.sfx(Sfx.ACHIEVEMENT)
         showBanner(if (gems > 0) "${group.name.uppercase()}  +$gems GEMS" else "ACHIEVEMENT: ${group.name.uppercase()}", hex("ffd23a"))
@@ -405,7 +412,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         buttons = nextButtons
         val sel = buttonAt(curX.toInt(), curY.toInt())
         selected = sel?.id
-        if (sel != null && sel.id != "tap-monster") drawSelection(sel)
+        if (sel != null && sel.id != "tap-monster" && sel.id != "scrollbar") drawSelection(sel)
         // hovering near the top/bottom of a list scrolls it
         if (modal == null && curX >= RX && curX < RX + RW) {
             if (curY in LIST_Y.toDouble()..LIST_Y + 14.0) scrollBy(-10)
@@ -421,24 +428,59 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
     }
 
-    /** Changes whenever the cursor moves to another pixel. */
-    fun cursorKey(): Long = (curX.toLong() shl 32) or curY.toLong()
+    // Where the cursor is drawn. Mouse movement arrives 20 times a second but the cursor is drawn 40
+    // times a second: a frame with fresh movement goes halfway, the next one the rest of the way.
+    private var drawX = curX; private var drawY = curY
+    private var seenX = curX; private var seenY = curY
+
+    /** Advance the drawn cursor one step; returns the top-left pixel of the cursor sprite. */
+    fun stepCursor(): Pair<Int, Int> {
+        val fresh = curX != seenX || curY != seenY
+        seenX = curX; seenY = curY
+        if (fresh) { drawX = (drawX + curX) / 2; drawY = (drawY + curY) / 2 } else { drawX = curX; drawY = curY }
+        return drawX.toInt() - 1 to drawY.toInt() - 1
+    }
 
     /**
      * Draw the cursor straight onto a frame of map colours. It is kept out of [render] so it can
      * move every client tick without redrawing the whole screen.
      */
-    fun overlayCursor(map: ByteArray) {
-        val x0 = curX.toInt(); val y0 = curY.toInt()
+    fun overlayCursor(map: ByteArray) = overlayCursorAt(map, curX.toInt() - 1, curY.toInt() - 1)
+
+    /** Draw the cursor sprite with its top-left at ([x0], [y0]). */
+    fun overlayCursorAt(map: ByteArray, x0: Int, y0: Int) {
         for (y in 0 until CURSOR_H) {
-            val ty = y0 + y - 1
+            val ty = y0 + y
             if (ty !in 0 until height) continue
             for (x in 0 until CURSOR_W) {
-                val tx = x0 + x - 1
+                val tx = x0 + x
                 val i = y * CURSOR_W + x
                 if (cursorMask[i] && tx in 0 until width) map[ty * width + tx] = cursorSprite[i]
             }
         }
+    }
+
+    private val SB_X get() = RX + RW - 17
+    private val SB_W = 10
+
+    /** Scroll bar thumb: top y and height. */
+    private fun thumb(): Pair<Int, Int> {
+        val sh = max(24, LIST_H * LIST_H / max(1, listContentH))
+        val range = max(1, listContentH - LIST_H)
+        return LIST_Y + ((LIST_H - sh) * (scroll / range)).toInt() to sh
+    }
+
+    /** Scroll so the thumb is centred on screen y [y]. */
+    private fun dragTo(y: Double) {
+        val sh = thumb().second
+        val k = clamp((y - LIST_Y - sh / 2.0) / max(1, LIST_H - sh), 0.0, 1.0)
+        scroll = k * max(0, listContentH - LIST_H)
+    }
+
+    private fun overList() = modal == null && curX >= RX && curX < RX + RW && curY >= LIST_Y - 30 && curY < LIST_Y + LIST_H
+
+    private fun scrollBy(pixels: Double) {
+        scroll = clamp(scroll + pixels, 0.0, max(0.0, (listContentH - LIST_H).toDouble()))
     }
 
     private fun scrollBy(pixels: Int) {
@@ -693,7 +735,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             "gear" -> "Open chests in the shop for gear"
             "pets" -> "Pets strike every $PET_CHARGE taps"
             "artifacts" -> "Prestige to earn relics"
-            "skills" -> "Points: 1 per 15 stages, 2 per prestige"
+            "skills" -> "Points: 1 per 20 stages, 2 per prestige"
             "quests" -> "New quests every day"
             else -> "Get more gems at our store!"
         }, RX + 10, ty + 7, hex("9aa0b8"))
@@ -709,21 +751,23 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             var y = LIST_Y - scroll.toInt()
             drawingList = true
             for (r in rows) {
-                r.draw(RX + 6, y, RW - 12) // off-screen rows still register their buttons for navigation
+                r.draw(RX + 6, y, RW - 26) // off-screen rows still register their buttons for navigation
                 y += r.h
             }
             drawingList = false
         }
         for (b in nextButtons) if (b.inList && (b.y + b.h <= LIST_Y + 4 || b.y >= LIST_Y + LIST_H - 4)) b.visible = false
-        // scrollbar
+        // scroll bar: click it (or hold W/S, or rest the cursor at the top/bottom of the list) to scroll
         if (listContentH > LIST_H) {
-            val sh = LIST_H * LIST_H / listContentH
-            val sy = LIST_Y + ((LIST_H - sh) * (scroll / (listContentH - LIST_H))).toInt()
-            gfx.fill(Rectangle2D.Double(RX + RW - 7.0, sy.toDouble(), 3.0, sh.toDouble()), hex("8a8c9a"))
-        }
+            val (sy, sh) = thumb()
+            val hot = dragging || (modal == null && hovered(SB_X - 4, LIST_Y, SB_W + 8, LIST_H))
+            gfx.fill(Rectangle2D.Double(SB_X.toDouble(), LIST_Y.toDouble(), SB_W.toDouble(), LIST_H.toDouble()), hex("23253a"))
+            gfx.fill(Rectangle2D.Double(SB_X + 1.0, sy.toDouble(), SB_W - 2.0, sh.toDouble()), if (hot) hex("ffd23a") else hex("8a8c9a"))
+            hit(SB_X - 4, LIST_Y, SB_W + 8, LIST_H, "scrollbar") { dragging = true; dragTo(curY) }
+        } else dragging = false
         // footer
         gfx.fill(Rectangle2D.Double(RX + 6.0, RY + RH - 66.0, RW - 12.0, 60.0), hex("22243a"))
-        val lines = wrap(footer.ifEmpty { "Move the mouse to aim. LEFT-CLICK the monster to attack and buttons to press. SHIFT: back" }, RW - 24)
+        val lines = wrap(footer.ifEmpty { "Move the mouse to aim, LEFT-CLICK to attack and press buttons. Scroll lists with W/S or the scroll bar. SHIFT: back" }, RW - 24)
         lines.take(4).forEachIndexed { i, l -> text(l, RX + 12, RY + RH - 60 + i * 12, hex("c8cbd8")) }
     }
 
@@ -961,9 +1005,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                         else -> ""
                     }
                     rows += upgradeRow("shop:${item.id}", { x, y -> shopIcon(item.icon, x, y) },
-                        item.name, item.desc, line2, if (bought) null else item.gems.toString(), "gem",
+                        item.name, item.desc, line2, if (bought) null else g.shopPrice(item).toString(), "gem",
                         when { bought -> "OWNED"; active != null -> "ACTIVE"; else -> "BUY" },
-                        !bought && active == null && d.gems >= item.gems, item.kind == "perm" || item.kind == "level") {
+                        !bought && active == null && d.gems >= g.shopPrice(item) && (item.id != "warp" || d.stage < d.maxStage), item.kind == "perm" || item.kind == "level") {
                         val msg = g.buyShopItem(item.id)
                         if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff"))
                         msg != null
@@ -1014,7 +1058,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
         rows += section("MORE SKILL POINTS")
         rows += upgradeRow("tree:more", { x, y -> Art.icon(gfx, "tome", x.toDouble(), y.toDouble(), 42.0) },
-            "Skill Book", "+3 skill points", "Also in the shop", "150", "gem", "BUY", d.gems >= 150, false) {
+            "Skill Book", "+3 skill points", "Also in the shop", g.shopPrice(SHOP_ITEMS.first { it.id == "sp_pack" }).toString(), "gem", "BUY",
+            d.gems >= g.shopPrice(SHOP_ITEMS.first { it.id == "sp_pack" }), false) {
             val msg = g.buyShopItem("sp_pack"); if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff")); msg != null
         }
         rows += upgradeRow("tree:respec", { x, y -> Art.icon(gfx, "prestige", x.toDouble(), y.toDouble(), 42.0) },
@@ -1235,8 +1280,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
 }
 
-private const val CURSOR_W = 15
-private const val CURSOR_H = 21
+const val CURSOR_W = 15
+const val CURSOR_H = 21
 /** The arrow cursor, drawn once: a white arrow with a solid black border (visible on any colour). */
 private val cursorImage: BufferedImage by lazy {
     val img = BufferedImage(CURSOR_W, CURSOR_H, BufferedImage.TYPE_INT_ARGB)

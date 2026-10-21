@@ -9,6 +9,9 @@ packets; the cursor is overlaid on the map colours every 50 ms, separately from 
 web store). No resource pack. `web/` is the old
 browser prototype, reference only.
 
+Balance follows the browser prototype: compare `./gradlew sim` with `node web/tools/sim.js`.
+The mouse wheel can't be read in spectator mode (client-only fly speed), so lists scroll by scroll bar / W/S.
+
 ## Every update
 - Bump `version` in `gradle.properties` (patch for fixes, minor for new features, major for reworks).
 - Build with `./gradlew build` → `build/libs/TapX-<version>.jar`.

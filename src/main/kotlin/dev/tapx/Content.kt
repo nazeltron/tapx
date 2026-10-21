@@ -7,6 +7,7 @@ const val WAVES = 8              // normal monsters per stage before the boss
 const val BOSS_TIME = 30.0       // seconds to kill a boss
 const val PRESTIGE_STAGE = 25    // stage needed to prestige
 const val PET_CHARGE = 15        // taps per pet attack
+const val ALLY_COOLDOWN = 1.0    // seconds between each ally's attacks
 const val SKILL_MAX = 10
 const val FREE_CHEST_MS = 4L * 3600 * 1000
 const val DEAL_MS = 6L * 3600 * 1000
@@ -128,20 +129,20 @@ val SHOP_ITEMS = listOf(
     ShopItem("starter", "offers", "Starter Pack", "Titan Chest + 10 eggs + 2 boosts (once)", 300, "chest_titan", "perm"),
     ShopItem("vip_gold", "perm", "Royal Treasury", "x2 gold from everything, forever", 800, "midas", "perm"),
     ShopItem("double_dmg", "perm", "Warrior's Blessing", "x2 ALL damage, forever", 1000, "blade", "perm"),
-    ShopItem("auto_tap", "perm", "Auto Tapper", "+1 automatic tap per second", 200, "phantom", "level", maxLevel = 10),
+    ShopItem("auto_tap", "perm", "Auto Tapper", "+1 automatic tap per second", 200, "phantom", "level", maxLevel = 5),
     ShopItem("offline_master", "perm", "Offline Master", "Full offline gold, up to 24 hours", 500, "moon", "perm"),
     ShopItem("mana_well", "perm", "Mana Well", "+25 max mana, forever", 300, "crystal", "perm"),
-    ShopItem("sp_pack", "perm", "Skill Book", "+3 skill points", 150, "tome", "level", maxLevel = 50),
+    ShopItem("sp_pack", "perm", "Skill Book", "+3 skill points", 150, "tome", "level", maxLevel = 20),
     ShopItem("surge", "boost", "Power Surge", "x2 ALL damage for 10 min", 40, "surge", "boost", 600.0),
-    ShopItem("golden_hour", "boost", "Golden Hour", "x3 gold for 30 min", 60, "clock", "boost", 1800.0),
+    ShopItem("golden_hour", "boost", "Golden Hour", "x2 gold for 20 min", 60, "clock", "boost", 1200.0),
     ShopItem("phantom", "boost", "Phantom Hand", "Auto-tap 6/sec for 10 min", 50, "phantom", "boost", 600.0),
-    ShopItem("battle_frenzy", "boost", "Battle Frenzy", "x5 ALL damage for 5 min", 80, "berserk", "boost", 300.0),
+    ShopItem("battle_frenzy", "boost", "Battle Frenzy", "x3 tap damage for 5 min", 90, "berserk", "boost", 300.0),
     ShopItem("rain", "boost", "Make It Rain", "Auto-levels your allies for 30 min", 100, "shower", "boost", 1800.0),
     ShopItem("flask", "instant", "Mana Flask", "Refill your mana", 15, "flask", "instant"),
     ShopItem("shower", "instant", "Gold Shower", "Gold worth 60 kills", 30, "midas", "instant"),
-    ShopItem("mountain", "instant", "Gold Mountain", "Gold worth 800 kills", 250, "shower", "instant"),
+    ShopItem("mountain", "instant", "Gold Mountain", "Gold worth 500 kills", 250, "shower", "instant"),
     ShopItem("relic_pack", "instant", "Relic Bundle", "Relics worth a quarter prestige", 150, "relic", "instant"),
-    ShopItem("warp", "instant", "Warp Scroll", "Skip ahead 10 stages", 100, "boots", "instant"),
+    ShopItem("warp", "instant", "Warp Scroll", "Skip 10 stages (up to your best)", 100, "boots", "instant"),
     ShopItem("respec", "instant", "Forget Skills", "Refund all skill points", 50, "prestige", "instant"),
     ShopItem("eggs5", "eggs", "Egg Basket", "5 random pet eggs", 100, "egg", "eggs"),
     ShopItem("eggs20", "eggs", "Egg Crate", "20 random pet eggs", 350, "egg", "eggs"),

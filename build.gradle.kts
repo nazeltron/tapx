@@ -46,6 +46,12 @@ tasks.register<JavaExec>("preview") {
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("dev.tapx.PreviewKt")
 }
+// Balance check, same strategy as web/tools/sim.js: ./gradlew sim -Pargs="hours tapsPerSecond"
+tasks.register<JavaExec>("sim") {
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.tapx.SimKt")
+    args((project.findProperty("args") as String? ?: "3 5").split(" "))
+}
 tasks.register<JavaExec>("dumpMapColors") {
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("dev.tapx.DumpMapColorsKt")

@@ -1,5 +1,7 @@
 package dev.tapx
 
+import dev.tapx.screen.CURSOR_H
+import dev.tapx.screen.CURSOR_W
 import dev.tapx.screen.GameScreen
 import dev.tapx.screen.MapScreen
 import dev.tapx.screen.Palette
@@ -121,18 +123,20 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     }
 
     private var ticks = 0L
-    private var drawnCursor = -1L
+    private var drawnX = 0
+    private var drawnY = 0
 
     /**
-     * Runs every [TICK_MS] (as often as the client sends mouse movement). The game and the screen
-     * update at the configured fps; in between only the cursor is moved, which is cheap.
+     * Runs every [TICK_MS]. The game and the screen update at the configured fps; in between only
+     * the cursor moves: its old spot is restored from the last frame and only that area is re-sent.
      */
     private fun loop() {
         try {
             while (true) inbox.poll()?.invoke() ?: break
             if (!active) return
             val every = (1000 / TICK_MS / plugin.config.getInt("fps", 10).coerceIn(2, 1000 / TICK_MS.toInt())).toInt()
-            if (ticks++ % every == 0L) {
+            val full = ticks++ % every == 0L
+            if (full) {
                 val dt = every * TICK_MS / 1000.0
                 game.update(dt)
                 screen.update(dt)
@@ -140,11 +144,23 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
                 if (frames++ % 10 == 0L) game.checkAchievements()
                 screen.render()
                 Palette.convert(screen.pixels, frameColors)
-            } else if (screen.cursorKey() == drawnCursor) return
-            System.arraycopy(frameColors, 0, mapColors, 0, mapColors.size)
-            screen.overlayCursor(mapColors)
-            drawnCursor = screen.cursorKey()
-            map?.push(mapColors)
+            }
+            val (cx, cy) = screen.stepCursor()
+            val m = map ?: return
+            if (full) {
+                System.arraycopy(frameColors, 0, mapColors, 0, mapColors.size)
+                screen.overlayCursorAt(mapColors, cx, cy)
+                m.push(mapColors)
+            } else if (cx != drawnX || cy != drawnY) {
+                val w = screen.width
+                for (y in maxOf(0, drawnY) until minOf(screen.height, drawnY + CURSOR_H)) {
+                    val x0 = maxOf(0, drawnX); val x1 = minOf(w, drawnX + CURSOR_W)
+                    if (x1 > x0) System.arraycopy(frameColors, y * w + x0, mapColors, y * w + x0, x1 - x0)
+                }
+                screen.overlayCursorAt(mapColors, cx, cy)
+                m.push(mapColors, minOf(cx, drawnX), minOf(cy, drawnY), maxOf(cx, drawnX) + CURSOR_W, maxOf(cy, drawnY) + CURSOR_H)
+            }
+            drawnX = cx; drawnY = cy
         } catch (e: Throwable) {
             plugin.logger.log(Level.WARNING, "TapX frame failed for ${player.name}", e)
         }
@@ -216,12 +232,13 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     override fun onBossFail() = screen.onBossFail()
     override fun onSkill(id: String, damage: Double) = screen.onSkill(id, damage)
     override fun onPetAttack(damage: Double) = screen.onPetAttack(damage)
+    override fun onAllyAttack(id: String, damage: Double) = screen.onAllyAttack(id, damage)
     override fun onAchievement(group: AchGroup, target: Double, gems: Int) = screen.onAchievement(group, target, gems)
 
     companion object {
         const val SCREEN_COLS = 7
         const val SCREEN_ROWS = 4
-        /** Mouse movement arrives once per client tick, so the cursor is redrawn this often. */
-        const val TICK_MS = 50L
+        /** Mouse movement arrives every 50 ms (a client tick); the cursor is drawn twice as often. */
+        const val TICK_MS = 25L
     }
 }

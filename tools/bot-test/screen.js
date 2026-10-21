@@ -103,6 +103,10 @@ bot.once('spawn', async () => {
     shot('05-shop');
     await pointAt(512 + 378 - 60, 200);                      // hover a shop button
     shot('06-hover');
+    await pointAt(878, 140); await click(200);             // grab the scroll bar...
+    await pointAt(878, 330); shot('06b-scrollbar-drag');     // ...and drag it down
+    await click(200);                                        // let go
+    await pointAt(700, 250); await key('forward', 600); shot('06c-scroll-w');  // hold W over the list: scrolls up
     await pointAt(448, 256); shot('07-centre');
     await mouse(0, 70, 14); await mouse(0, -70, 14);          // far down and back: re-centres, cursor must end where it began
     shot('08-after-recentre');

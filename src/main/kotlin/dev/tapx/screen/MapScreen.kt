@@ -96,19 +96,25 @@ class MapScreen(
      * Upload a full frame of map colour ids (width*height, row-major). Each 128x128 tile is checked
      * in horizontal bands so scattered changes don't force a whole-tile resend. Returns bytes sent.
      */
-    fun push(pixels: ByteArray): Int {
+    fun push(pixels: ByteArray): Int = push(pixels, 0, 0, width, height)
+
+    /** Like [push], but only looks for changes inside the screen rectangle [x0, x1) x [y0, y1). */
+    fun push(pixels: ByteArray, x0: Int, y0: Int, x1: Int, y1: Int): Int {
         if (!spawned) return 0
         var bytes = 0
-        for (row in 0 until rows) for (col in 0 until cols) {
+        for (row in maxOf(0, y0) / 128..minOf(rows * 128, y1 - 1) / 128) for (col in maxOf(0, x0) / 128..minOf(cols * 128, x1 - 1) / 128) {
+            if (row >= rows || col >= cols) continue
             val tile = sent[row * cols + col]
             val id = MapId(mapIdBase + row * cols + col)
-            var band = 0
-            while (band < 128) {
+            val tx0 = (x0 - col * 128).coerceIn(0, 128); val tx1 = (x1 - col * 128).coerceIn(0, 128)
+            val ty0 = (y0 - row * 128).coerceIn(0, 128); val ty1 = (y1 - row * 128).coerceIn(0, 128)
+            var band = ty0 / BAND * BAND
+            while (band < ty1) {
                 var minX = 128; var minY = 128; var maxX = -1; var maxY = -1
-                for (y in band until band + BAND) {
+                for (y in maxOf(band, ty0) until minOf(band + BAND, ty1)) {
                     val src = (row * 128 + y) * width + col * 128
                     val t = y * 128
-                    for (x in 0 until 128) {
+                    for (x in tx0 until tx1) {
                         if (pixels[src + x] != tile[t + x]) {
                             if (x < minX) minX = x
                             if (x > maxX) maxX = x

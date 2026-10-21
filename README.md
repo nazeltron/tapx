@@ -15,7 +15,10 @@ the whole view. Every player has their own screen, game and save; players don't 
 **Controls**
 - **Mouse**: moves the on-screen cursor (speed adjustable in Settings)
 - **Left-click**: press the button under the cursor, or attack when the cursor is over the battle
-- **W A S D / Space**: optional keyboard navigation (jump the cursor between buttons, press)
+- **Scrolling lists**: drag the scroll bar (click it, move, click again), hold **W/S** with the
+  cursor over the list, or rest the cursor at the top/bottom edge of the list. (The mouse wheel
+  can't be used: in spectator mode Minecraft only uses it for fly speed and never tells the server.)
+- **A D / Space**: optional keyboard navigation (jump the cursor between buttons, press)
 - **Shift**: back / close pop-ups
 
 The player sits on the invisible camera, so their own view stays locked to the screen but the
@@ -38,7 +41,7 @@ spot (64 blocks apart). Leaving the game restores the player's game mode and loc
 - Tap monsters; defeat 8, then beat the **boss** before its timer runs out. Every 10 stages is a new world.
 - 8 worlds; every 25th stage is a **Titan Lord** (3x HP, big gold and relic reward, small gem chance)
 - **Hero** tab: level up tap damage, prestige, learn 6 mana **spells** (cast from the left of the battle)
-- **Allies**: 16 heroes who deal damage every second (and keep earning while you're away)
+- **Allies**: 16 heroes; each one attacks once per second (and they keep earning while you're away)
 - **Skills**: a 16-node skill tree in 4 branches (Knight, Warlord, Sorcerer, Rogue); points from stages and prestige
 - **Gear**: weapons, helmets, armor and auras from chests; they change how your hero looks
 - **Pets**: 8 companions that strike every 15 taps, each with its own bonus
@@ -100,7 +103,11 @@ Player progress is saved to `plugins/TapX/players/<uuid>.json`.
 ```sh
 ./gradlew build     # -> build/libs/TapX-<version>.jar
 ./gradlew preview   # renders the screen to build/preview/*.png through the real map palette
+./gradlew sim -Pargs="3 5"   # balance check: 3 hours at 5 taps/sec, same bot as web/tools/sim.js
 ```
+
+The core formulas match the browser prototype in `web/`; `sim` and `node web/tools/sim.js` should
+give similar pacing.
 
 The version lives in `gradle.properties`; the jar name follows it. `tools/bot-test` has a
 mineflayer bot that plays on a local server and rebuilds the screen from the packets it receives.

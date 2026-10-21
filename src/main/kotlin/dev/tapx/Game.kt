@@ -17,6 +17,7 @@ interface GameEvents {
     fun onBossFail() {}
     fun onSkill(id: String, damage: Double) {}
     fun onPetAttack(damage: Double) {}
+    fun onAllyAttack(id: String, damage: Double) {}
     fun onAchievement(group: AchGroup, target: Double, gems: Int) {}
 }
 
@@ -37,6 +38,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     private var autoTapAcc = 0.0
     private var rainTimer = 0.0
     private var nextSpawn = 0.0
+    /** Seconds until each ally's next attack. Allies strike once every [ALLY_COOLDOWN] seconds. */
+    private val allyTimers = HashMap<String, Double>()
 
     // ---------------------------------------------------------- lookups
     fun art(id: String) = d.artifacts[id] ?: 0
@@ -68,12 +71,12 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun isLordStage(stage: Int) = stage % 25 == 0
     fun bossHp(stage: Int) = monsterHp(stage) * 6 * (1 - 0.04 * art("crown")) * (if (isLordStage(stage)) 3.0 else 1.0)
     fun goldMult() = (1 + 0.25 * art("idol")) * (1 + gearBonus("gold")) * (1 + petBonus("gold")) * (1 + 0.1 * st("r_greed")) *
-        (if (owns("vip_gold")) 2.0 else 1.0) * (if (buffOn("golden_hour")) 3.0 else 1.0) *
+        (if (owns("vip_gold")) 2.0 else 1.0) * (if (buffOn("golden_hour")) 2.0 else 1.0) *
         (if (buffOn("midas")) skillPower("midas", skillLvl("midas")) else 1.0)
     fun killGold(stage: Int) = ceil(monsterHp(stage) * 0.2) * goldMult()
 
     private fun allDamageMult() = (1 + 0.25 * art("blade")) * (1 + 0.1 * st("w_vets")) * (if (owns("double_dmg")) 2.0 else 1.0) *
-        (if (buffOn("surge")) 2.0 else 1.0) * (if (buffOn("battle_frenzy")) 5.0 else 1.0)
+        (if (buffOn("surge")) 2.0 else 1.0)
     private fun bossDamageMult() = 1 + petBonus("boss") + 0.1 * st("k_bane") + 0.1 * art("slayer")
 
     fun heroMilestoneMult(lvl: Int) = HERO_MILESTONES.filter { lvl >= it.first }.fold(1.0) { m, x -> m * x.second }
@@ -83,12 +86,15 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun rawHeroDps() = HEROES.sumOf { heroBaseDps(it, heroLvl(it.id)) }
     fun heroDps(buffed: Boolean = true) =
         rawHeroDps() * allyMult() * (if (buffed && buffOn("warcry")) skillPower("warcry", skillLvl("warcry")) else 1.0)
+    /** Damage of one ally's attack (it attacks once per [ALLY_COOLDOWN] seconds). */
+    fun allyHit(h: Hero) = heroBaseDps(h, heroLvl(h.id)) * ALLY_COOLDOWN * allyMult() *
+        (if (buffOn("warcry")) skillPower("warcry", skillLvl("warcry")) else 1.0)
 
     fun tapBase(l: Int) = l * 1.05.pow(l - 1)
     fun tapCost(l: Int) = 5 * 1.074.pow(l - 1)
     fun tapDamage(buffed: Boolean = true): Double {
         val base = tapBase(d.tapLevel) + (0.03 + 0.005 * st("w_drill")) * rawHeroDps() * allyMult()
-        return base * (1 + 0.4 * art("gauntlet")) * (1 + gearBonus("tap")) * (1 + petBonus("tap")) * (1 + 0.15 * st("k_edge")) * allDamageMult() *
+        return base * (if (buffOn("battle_frenzy")) 3.0 else 1.0) * (1 + 0.4 * art("gauntlet")) * (1 + gearBonus("tap")) * (1 + petBonus("tap")) * (1 + 0.15 * st("k_edge")) * allDamageMult() *
             (if (buffed && buffOn("berserk")) skillPower("berserk", skillLvl("berserk")) else 1.0)
     }
 
@@ -106,7 +112,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun wispRate() = 1 + 0.08 * art("lantern")
 
     // ---------------------------------------------------------- skill tree
-    fun spTotal() = d.stats.bestStage / 15 + d.stats.prestiges * 2 + d.bonusSp
+    fun spTotal() = d.stats.bestStage / 20 + d.stats.prestiges * 2 + d.bonusSp
     fun spFree() = spTotal() - d.skillTree.values.sum()
     fun buyNode(id: String): Boolean {
         val n = SKILL_TREE.firstOrNull { it.id == id } ?: return false
@@ -248,11 +254,11 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         if (m == null || m.dead) {
             nextSpawn -= dt
             if (m == null || nextSpawn <= 0) spawnMonster()
+            allyAttacks(dt)
             return
         }
         m.age += dt
-        val dps = heroDps()
-        if (dps > 0) dealDamage(dps * dt)
+        allyAttacks(dt)
         val rate = autoTapRate()
         if (rate > 0) {
             autoTapAcc += rate * dt
@@ -268,6 +274,25 @@ class Game(var d: PlayerData, private val events: GameEvents) {
                 d.wave = WAVES
                 events.onBossFail()
                 spawnMonster()
+            }
+        }
+    }
+
+    /** Each hired ally strikes on its own 1 second rhythm; an ally that's ready waits for the next monster. */
+    private fun allyAttacks(dt: Double) {
+        HEROES.forEachIndexed { i, h ->
+            if (heroLvl(h.id) == 0) return@forEachIndexed
+            val left = (allyTimers[h.id] ?: (i * 0.37 % 1.0)) - dt
+            val m = monster
+            when {
+                left > 0 -> allyTimers[h.id] = left
+                m == null || m.dead -> allyTimers[h.id] = 0.0
+                else -> {
+                    allyTimers[h.id] = left + ALLY_COOLDOWN
+                    val dmg = allyHit(h)
+                    events.onAllyAttack(h.id, dmg)
+                    dealDamage(dmg)
+                }
             }
         }
     }
@@ -356,6 +381,9 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     }
 
     // ---------------------------------------------------------- gem shop
+    /** Levelled items cost 50% more for every level already bought. */
+    fun shopPrice(item: ShopItem) = if (item.kind == "level") item.gems * (2 + shopLevel(item.id)) / 2 else item.gems
+
     fun shopBought(item: ShopItem) = when (item.kind) {
         "perm" -> owns(item.id)
         "level" -> shopLevel(item.id) >= item.maxLevel
@@ -365,10 +393,12 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     /** Buy a gem shop item. Returns a short result message, or null if it can't be bought. */
     fun buyShopItem(id: String): String? {
         val item = SHOP_ITEMS.firstOrNull { it.id == id } ?: return null
-        if (shopBought(item) || d.gems < item.gems) return null
+        val price = shopPrice(item)
+        if (shopBought(item) || d.gems < price) return null
         if (item.kind == "boost" && buffOn(id)) return null
         if (id == "respec" && d.skillTree.isEmpty()) return null
-        d.gems -= item.gems
+        if (id == "warp" && d.stage >= d.maxStage) return null
+        d.gems -= price
         val msg = when (id) {
             "starter" -> {
                 openChestFree(CHESTS.first { it.id == "titan" })
@@ -382,7 +412,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             "shower" -> { val g = killGold(d.stage) * 60; addGold(g); "+${fmt(g)} gold" }
             "mountain" -> { val g = killGold(d.stage) * 800; addGold(g); "+${fmt(g)} gold" }
             "relic_pack" -> { val r = max(5L, relicsFor(max(d.maxStage, PRESTIGE_STAGE)) / 4); d.relics += r; "+${fmt(r)} relics" }
-            "warp" -> { repeat(10) { advanceStage() }; monster = null; "Warped to stage ${d.stage}" }
+            "warp" -> { repeat(min(10, d.maxStage - d.stage)) { advanceStage() }; monster = null; "Warped to stage ${d.stage}" }
             "respec" -> { d.skillTree.clear(); "Skill points refunded" }
             "eggs5" -> { grantRandomEggs(5); "+5 pet eggs" }
             "eggs20" -> { grantRandomEggs(20); "+20 pet eggs" }
@@ -645,7 +675,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         d.mana = min(maxMana().toDouble(), d.mana + manaRegen() * secs)
         val dps = heroDps(false)
         if (dps <= 0 || secs < 30) return 0.0
-        val kills = min(secs * dps / monsterHp(d.stage), secs * 2)
+        // allies alone kill at most about one monster per attack
+        val kills = min(secs * dps / monsterHp(d.stage), secs / ALLY_COOLDOWN)
         val g = kills * killGold(d.stage) * (if (owns("offline_master")) 1.0 else 0.6) * (1 + 0.2 * art("coin")) * (1 + petBonus("offline"))
         addGold(g)
         return g
