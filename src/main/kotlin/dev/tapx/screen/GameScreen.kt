@@ -60,9 +60,10 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private val LIST_Y = 112; private val LIST_H = 318
 
     // ------------------------------------------------------------------ UI state
-    // Keyboard/controller-style navigation: one button is selected and highlighted.
-    private var selected: String? = "tap"
-    private var selRect: IntArray? = null
+    // A mouse cursor (driven by the player's head rotation) plus keyboard jumps between buttons.
+    private var curX = width / 2.0
+    private var curY = height / 2.0
+    private var selected: String? = null // button under the cursor (from the last frame)
     private val held = HashMap<String, Double>() // direction -> seconds until auto-repeat
     private var t = 0.0
     /** Idle animations (breathing, bobbing, clouds) step 4 times a second to save bandwidth. */
@@ -111,21 +112,28 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private var bgWorld: World? = null
 
     // ================================================================== input
-    /** Left-click: tap the monster, or press the selected button when a pop-up is open. */
-    fun click() {
-        if (modal != null) { activate(); return }
-        val w = wisp
-        if (w != null && selected == "wisp") { catchWisp(w); return }
-        g.tap(false)
+    /** Mouse movement in degrees (from the client's head rotation). */
+    fun mouse(dYaw: Double, dPitch: Double) {
+        val k = 7.0 * d.cursorSpeed.coerceIn(0.25, 4.0)
+        curX = clamp(curX + dYaw * k, 0.0, width - 1.0)
+        curY = clamp(curY + dPitch * k, 0.0, height - 1.0)
     }
+
+    /** Left-click (or space): press the button under the cursor, otherwise attack. */
+    fun click() {
+        val b = buttonAt(curX.toInt(), curY.toInt())
+        if (b != null) { b.action(); return }
+        if (modal == null && curX.toInt() in BX until BX + BW && curY.toInt() in BY + 40 until BY + BH) g.tap(false)
+    }
+
+    private fun buttonAt(x: Int, y: Int) = buttons.lastOrNull { it.visible && x >= it.x && y >= it.y && x < it.x + it.w && y < it.y + it.h }
 
     private fun catchWisp(w: DoubleArray) {
         val msg = g.wispReward()
         burst(w[0], w[1], hex("bbffff"), 24, 260.0, 5.0, 100.0)
         floater(msg, w[0], w[1] - 20, hex("bff8ff"), 2, vy = -50.0, life = 1.6)
         host.sfx(Sfx.WISP)
-        wisp = null; wispTimer = Random.nextDouble(45.0, 90.0)
-        if (selected == "wisp") selected = "tap"
+        wisp = null; wispTimer = Random.nextDouble(45.0, 90.0) / g.wispRate()
     }
 
     /** Movement keys (WASD), jump (space) and sneak (shift), as pressed/released. */
@@ -135,34 +143,29 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             if (!on) held.remove(name)
         }
         dir("up", forward, 0, -1); dir("down", back, 0, 1); dir("left", left, -1, 0); dir("right", right, 1, 0)
-        if (jump && !prevJump) activate()
+        if (jump && !prevJump) click()
         if (sneak && !prevSneak) backOut()
-    }
-
-    private fun activate() {
-        val b = buttons.firstOrNull { it.id == selected }
-        if (b == null) { if (modal == null) g.tap(false); return }
-        b.action()
     }
 
     private fun backOut() {
         val m = modal
         if (m != null) { m.back(); return }
-        selected = "tab:$tab"
+        buttons.firstOrNull { it.id == "tab:$tab" }?.let { moveCursorTo(it) }
         host.sfx(Sfx.CLICK)
     }
 
-    /** Move the selection to the nearest button in a direction (like a TV menu). */
+    private fun moveCursorTo(b: Button) { curX = b.x + b.w / 2.0; curY = b.y + b.h / 2.0 }
+
+    /** Jump the cursor to the nearest button in a direction (keyboard control). */
     private fun move(dx: Int, dy: Int) {
-        val modalOpen = modal
-        if (modalOpen is CalibrateModal) { modalOpen.nudge(dx, dy); return }
-        val cur = buttons.firstOrNull { it.id == selected }
-        if (cur == null) { selected = buttons.firstOrNull()?.id; return }
-        val cx = cur.x + cur.w / 2.0; val cy = cur.y + cur.h / 2.0
+        val m = modal
+        if (m is CalibrateModal) { m.nudge(dx, dy); return }
+        val cx = curX; val cy = curY
+        val cur = buttonAt(cx.toInt(), cy.toInt())
         var best: Button? = null
         var bestScore = Double.MAX_VALUE
         for (b in buttons) {
-            if (b === cur) continue
+            if (b === cur || !b.visible) continue
             val vx = b.x + b.w / 2.0 - cx; val vy = b.y + b.h / 2.0 - cy
             val along = vx * dx + vy * dy
             if (along <= 4) continue
@@ -170,7 +173,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val score = along + perp * 2.5
             if (score < bestScore) { bestScore = score; best = b }
         }
-        if (best != null) { selected = best.id; host.sfx(Sfx.CLICK) }
+        if (best != null) { moveCursorTo(best); host.sfx(Sfx.CLICK) }
+        else if (dy != 0 && cx >= RX && cy in LIST_Y.toDouble()..(LIST_Y + LIST_H).toDouble()) scrollBy(dy * 52)
     }
 
     // ================================================================== update
@@ -235,7 +239,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             if (wispTimer <= 0) wisp = doubleArrayOf(-20.0, 0.0, Random.nextDouble(150.0, 260.0), 0.0)
         } else {
             wp[3] += dt; wp[0] += 60 * dt; wp[1] = wp[2] + sin(wp[3] * 2.5) * 30
-            if (wp[0] > BW + 30) { wisp = null; wispTimer = Random.nextDouble(45.0, 90.0) }
+            if (wp[0] > BW + 30) { wisp = null; wispTimer = Random.nextDouble(45.0, 90.0) / g.wispRate() }
         }
     }
 
@@ -249,7 +253,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
     private fun currentSpec(): Art.MonsterSpec? {
         val m = g.monster ?: return null
-        if (specFor !== m) { spec = Art.genMonster(m.seed, m.boss, m.mimic); specFor = m }
+        if (specFor !== m) { spec = Art.genMonster(m.seed, m.boss, m.mimic, m.lord); specFor = m }
         return spec
     }
     private fun monsterCenter(): Pair<Double, Double> {
@@ -297,7 +301,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
 
     override fun onSpawn(m: Monster) {
-        if (m.boss) { host.sfx(Sfx.BOSS); showBanner("BOSS BATTLE!", hex("ff5a4a")) }
+        if (m.lord) { host.sfx(Sfx.BOSS); showBanner("TITAN LORD!", hex("c58aff")) }
+        else if (m.boss) { host.sfx(Sfx.BOSS); showBanner("BOSS BATTLE!", hex("ff5a4a")) }
         if (m.mimic) showBanner("A TREASURE MIMIC!", hex("ffd23a"))
     }
 
@@ -332,7 +337,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     override fun onAchievement(group: AchGroup, target: Double, gems: Int) {
         host.sfx(Sfx.ACHIEVEMENT)
-        showBanner("${group.name.uppercase()}  +$gems GEMS", hex("ffd23a"))
+        showBanner(if (gems > 0) "${group.name.uppercase()}  +$gems GEMS" else "ACHIEVEMENT: ${group.name.uppercase()}", hex("ffd23a"))
+    }
+
+    /** Gems arrived from the web store / an admin. */
+    fun gemsReceived(n: Long) {
+        host.sfx(Sfx.LEGENDARY)
+        modal = InfoModal("THANK YOU!", listOf("Your purchase has arrived:"), "+${fmt(n)} gems")
     }
 
     fun welcome(seconds: Double, gold: Double) {
@@ -353,12 +364,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         return "$r.."
     }
 
-    /** True if the selected button (from the last frame) sits inside this rectangle. */
+    /** True if the cursor is inside this rectangle. */
     private fun hovered(x: Int, y: Int, w: Int, h: Int): Boolean {
-        val r = selRect ?: return false
-        val cx = r[0] + r[2] / 2; val cy = r[1] + r[3] / 2
+        if (modal != null && !drawingModal) return false
+        val cx = curX.toInt(); val cy = curY.toInt()
         return cx >= x && cy >= y && cx < x + w && cy < y + h
     }
+    private var drawingModal = false
 
     private fun panel(x: Int, y: Int, w: Int, h: Int, fill: Color = hex("2b2d3c"), border: Color = hex("8a8c4a")) {
         gfx.fill(Rectangle2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()), border)
@@ -387,27 +399,32 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         gfx.color = hex("14131c"); gfx.fillRect(0, 0, width, height)
         drawBattle()
         drawPanel()
+        drawingModal = true
         modal?.draw()
+        drawingModal = false
         buttons = nextButtons
-        if (buttons.none { it.id == selected }) selected = buttons.firstOrNull { it.visible }?.id
-        val sel = buttons.firstOrNull { it.id == selected }
-        selRect = sel?.let { intArrayOf(it.x, it.y, it.w, it.h) }
+        val sel = buttonAt(curX.toInt(), curY.toInt())
+        selected = sel?.id
         if (sel != null) drawSelection(sel)
+        // hovering near the top/bottom of a list scrolls it
+        if (modal == null && curX >= RX && curX < RX + RW) {
+            if (curY in LIST_Y.toDouble()..LIST_Y + 14.0) scrollBy(-10)
+            if (curY in LIST_Y + LIST_H - 14.0..LIST_Y + LIST_H.toDouble()) scrollBy(10)
+        }
+        drawCursor()
     }
 
-    /** Pulsing yellow frame around the selected button; scrolls lists to keep it in view. */
     private fun drawSelection(b: Button) {
-        if (b.inList) {
-            val top = LIST_Y + 2; val bottom = LIST_Y + LIST_H - 2
-            if (b.y < top) scrollBy(b.y - top)
-            else if (b.y + b.h > bottom) scrollBy(b.y + b.h - bottom)
-        }
-        val pulse = if ((t * 3).toInt() % 2 == 0) hex("ffe34a") else hex("ffb000")
         gfx.save {
             if (b.inList) clip(Rectangle2D.Double(RX + 2.0, LIST_Y.toDouble(), RW - 4.0, LIST_H.toDouble()))
-            stroke = stroke(3f); color = pulse
-            draw(Rectangle2D.Double(b.x - 2.0, b.y - 2.0, b.w + 4.0, b.h + 4.0))
+            stroke = stroke(2f); color = hex("ffe34a")
+            draw(Rectangle2D.Double(b.x - 1.0, b.y - 1.0, b.w + 2.0, b.h + 2.0))
         }
+    }
+
+    private fun drawCursor() {
+        val x = curX; val y = curY
+        gfx.fillStroke(path { moveTo(x, y); lineTo(x, y + 14); lineTo(x + 4, y + 11); lineTo(x + 7, y + 17); lineTo(x + 10, y + 15); lineTo(x + 7, y + 10); lineTo(x + 12, y + 10); closePath() }, hex("ffd23a"), 1.5f)
     }
 
     private fun scrollBy(pixels: Int) {
@@ -500,6 +517,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         gearDef(d.equipped["helm"])?.let { l = l.copy(helmGear = it.helm, helmColor = it.color) }
         gearDef(d.equipped["armor"])?.let { l = l.copy(outfit = it.outfit ?: l.outfit, trim = it.trim ?: l.trim) }
         gearDef(d.equipped["aura"])?.let { l = l.copy(aura = it.aura) }
+        skinDef(d.skin)?.let { l = it.apply(l) }
         return l
     }
 
@@ -573,7 +591,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         // buffs (right column)
         var yy = 96
         for ((id, left) in d.buffs) {
-            val name = SKILLS.firstOrNull { it.id == id }?.name ?: PERKS.firstOrNull { it.id == id }?.name ?: continue
+            val name = SKILLS.firstOrNull { it.id == id }?.name ?: SHOP_ITEMS.firstOrNull { it.id == id }?.name ?: continue
             gfx.fill(rrect(BW - 128.0, yy.toDouble(), 120.0, 14.0, 4.0), Color(0, 0, 0, 120))
             text(fit("$name ${fmtTime(left)}", 114), BW - 124, yy + 4, hex("ffe08a"))
             yy += 17
@@ -615,14 +633,15 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
 
     // ================================================================== right panel
-    private val TABS = listOf("hero" to "HERO", "allies" to "ALLIES", "gear" to "GEAR", "pets" to "PETS", "artifacts" to "RELICS", "shop" to "SHOP")
-    private val TAB_COLORS = mapOf("hero" to "e8643a", "allies" to "3aa0b8", "gear" to "e3b72e", "pets" to "58b04a", "artifacts" to "8a5ad0", "shop" to "2f8a86")
+    private val TABS = listOf("hero" to "HERO", "allies" to "ALLY", "skills" to "SKILL", "gear" to "GEAR", "pets" to "PETS", "artifacts" to "RELIC", "quests" to "QUEST", "shop" to "SHOP")
+    private val TAB_COLORS = mapOf("hero" to "e8643a", "allies" to "3aa0b8", "skills" to "c0507a", "gear" to "e3b72e", "pets" to "58b04a",
+        "artifacts" to "8a5ad0", "quests" to "4a7ad0", "shop" to "2f8a86")
 
     private fun drawPanel() {
         panel(RX, RY, RW, RH)
         // tabs
         TABS.forEachIndexed { i, (id, label) ->
-            val x = RX + 6 + i * 61; val y = RY + 6; val w = 58; val h = 46
+            val x = RX + 6 + i * 46; val y = RY + 6; val w = 44; val h = 46
             val c = hex(TAB_COLORS[id]!!)
             val active = tab == id
             val hov = hovered(x, y, w, h)
@@ -631,7 +650,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             if (active) gfx.fill(Rectangle2D.Double(x + 2.0, y + 2.0, w - 4.0, 3.0), Color.WHITE)
             tabIcon(id, x + w / 2.0, y + 18.0)
             text(label, x + w / 2, y + h - 11, if (active) Color.WHITE else hex("c8cbd8"), 1, 1)
-            if (tabBadge(id)) { gfx.fillStroke(circle(x + w - 7.0, y + 7.0, 5.0), hex("e8392a"), 1.5f, Color.WHITE) }
+            if (tabBadge(id)) { gfx.fillStroke(circle(x + w - 6.0, y + 7.0, 4.0), hex("e8392a"), 1.5f, Color.WHITE) }
             hit(x, y, w, h, "tab:$id") { if (tab != id) { tab = id; scroll = 0.0; host.sfx(Sfx.CLICK) } }
         }
         // header
@@ -643,11 +662,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             "gear" -> headerStat("${d.gear.size}/${GEAR.size}", "EQUIPMENT")
             "pets" -> headerStat(petDef(d.activePet)?.name?.uppercase() ?: "NO PET", "ACTIVE")
             "artifacts" -> headerStat("${d.maxStage}", "MAX STAGE")
+            "skills" -> headerStat("${g.spFree()}", "SKILL POINTS")
+            "quests" -> headerStat("DAILY", "QUESTS & REWARDS")
             else -> headerStat("SHOP", "")
         }
         when (tab) {
             "artifacts" -> { Art.relic(gfx, RX + RW - 70.0, hy + 13.0, 8.0); text(fmt(d.relics), RX + RW - 58, hy + 6, Color.WHITE, 2) }
-            "shop", "gear", "pets" -> { Art.gem(gfx, RX + RW - 70.0, hy + 12.0, 8.0); text(fmt(d.gems), RX + RW - 58, hy + 6, Color.WHITE, 2) }
+            "shop", "gear", "pets", "quests" -> { Art.gem(gfx, RX + RW - 70.0, hy + 12.0, 8.0); text(fmt(d.gems), RX + RW - 58, hy + 6, Color.WHITE, 2) }
             else -> { Art.coin(gfx, RX + RW - 70.0, hy + 13.0, 8.0); text(fmt(d.gold), RX + RW - 58, hy + 6, Color.WHITE, 2) }
         }
         // toolbar: buy multiplier + scroll arrows
@@ -658,8 +679,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             "gear" -> "Open chests in the shop for gear"
             "pets" -> "Pets strike every $PET_CHARGE taps"
             "artifacts" -> "Prestige to earn relics"
-            else -> "Gems only - no real money!"
+            "skills" -> "Points: 1 per 15 stages, 2 per prestige"
+            "quests" -> "New quests every day"
+            else -> "Get more gems at our store!"
         }, RX + 10, ty + 7, hex("9aa0b8"))
+        button(RX + RW - 60, ty, 26, 20, "^", hex("5b6074"), id = "scroll:up") { scrollBy(-104) }
+        button(RX + RW - 32, ty, 26, 20, "v", hex("5b6074"), id = "scroll:down") { scrollBy(104) }
 
         // list
         gfx.save {
@@ -684,7 +709,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
         // footer
         gfx.fill(Rectangle2D.Double(RX + 6.0, RY + RH - 66.0, RW - 12.0, 60.0), hex("22243a"))
-        val lines = wrap(footer.ifEmpty { "LEFT-CLICK: attack   W A S D: move   SPACE: select   SHIFT: back" }, RW - 24)
+        val lines = wrap(footer.ifEmpty { "Move the mouse to aim. LEFT-CLICK the monster to attack and buttons to press. SHIFT: back" }, RW - 24)
         lines.take(4).forEachIndexed { i, l -> text(l, RX + 12, RY + RH - 60 + i * 12, hex("c8cbd8")) }
     }
 
@@ -712,6 +737,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             "gear" -> Art.gearIcon(gfx, GEAR.first { it.id == "a_dragon" }, cx - 13, cy - 13, 26.0, true)
             "pets" -> Art.drawPet(gfx, PETS[0], cx, cy + 2, 0.5, t)
             "artifacts" -> Art.relic(gfx, cx, cy + 1, 11.0)
+            "skills" -> Art.icon(gfx, "tome", cx - 12, cy - 12, 24.0)
+            "quests" -> Art.icon(gfx, "quest", cx - 12, cy - 12, 24.0)
             else -> Art.chest(gfx, CHESTS[2], cx, cy + 2, 0.42)
         }
     }
@@ -721,6 +748,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         "allies" -> HEROES.indices.any { g.heroUnlocked(it) && d.gold >= g.heroUpgradeInfo(HEROES[it]).second }
         "artifacts" -> ARTIFACTS.any { (it.max == 0 || g.art(it.id) < it.max) && d.relics >= g.artifactCost(it, g.art(it.id)) }
         "shop" -> g.freeChestReady()
+        "skills" -> g.spFree() > 0 && SKILL_TREE.any { g.st(it.id) < it.max }
+        "quests" -> g.loginReady() || g.quests().list.any { !it.claimed && g.questProgress(it) >= it.target } || g.questBonusReady()
         else -> false
     }
 
@@ -761,6 +790,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         "gear" -> gearRows()
         "pets" -> petRows()
         "artifacts" -> artifactRows()
+        "skills" -> skillTreeRows()
+        "quests" -> questRows()
         else -> shopRows()
     }
 
@@ -788,13 +819,6 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                 "${sk.mana} mana", if (maxed) null else fmt(c), "coin",
                 when { maxed -> "MAX"; locked -> "TAP LV ${sk.req}"; lvl == 0 -> "LEARN"; else -> "UPGRADE" },
                 !maxed && !locked && d.gold >= c, false) { g.buySkill(sk.id) }
-        }
-        rows += section("PERKS - BOUGHT WITH GEMS")
-        for (p in PERKS) {
-            val active = d.buffs[p.id]
-            rows += upgradeRow("perk:${p.id}", { x, y -> Art.icon(gfx, p.id, x.toDouble(), y.toDouble(), 42.0) },
-                p.name, p.desc, if (active != null) "Active ${fmtTime(active)}" else "",
-                p.gems.toString(), "gem", if (active != null) "ACTIVE" else "USE", active == null && d.gems >= p.gems, false) { g.buyPerk(p.id) }
         }
         return rows
     }
@@ -888,26 +912,146 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         rows += section("FREE CHEST - EVERY 4 HOURS")
         val ready = g.freeChestReady()
         rows += upgradeRow("free", { x, y -> Art.chest(gfx, null, x + 21.0, y + 24.0, 0.7) },
-            "Free Chest", "1 piece of gear + 5 gems",
+            "Free Chest", "1 piece of gear",
             if (ready) "Ready!" else "Ready in ${fmtTime((d.freeChestAt - System.currentTimeMillis()) / 1000.0)}",
             null, "", if (ready) "OPEN" else "WAIT", ready, true) {
-            val items = g.openFreeChest(); if (items != null) modal = LootModal("FREE CHEST", items, "+5 gems"); items != null
+            val items = g.openFreeChest(); if (items != null) modal = LootModal("FREE CHEST", items, null); items != null
         }
-        rows += section("CHESTS - FIND EQUIPMENT")
-        for (c in CHESTS) rows += upgradeRow("chest:${c.id}", { x, y -> Art.chest(gfx, c, x + 21.0, y + 24.0, 0.7) },
-            c.name, "${c.items} pieces of gear", if (c.id == "titan") "1st is Epic or better!" else "${(c.odds[2] * 100 + c.odds[3] * 100).let { "%.1f".format(it) }}% Epic+",
-            c.gems.toString(), "gem", "OPEN", d.gems >= c.gems, true) {
-            val items = g.openChest(c.id); if (items != null) modal = LootModal(c.name.uppercase(), items, null); items != null
-        }
-        val deals = g.currentDeals()
-        rows += section("DAILY DEALS - NEW IN ${fmtTime((DEAL_MS - System.currentTimeMillis() % DEAL_MS) / 1000.0)}")
-        deals.list.forEachIndexed { i, deal ->
-            val p = petDef(deal.pet) ?: return@forEachIndexed
-            rows += upgradeRow("deal:$i", { x, y -> Art.petPortrait(gfx, p, x.toDouble(), y.toDouble(), 42.0, true) },
-                "${p.name} x${deal.eggs} eggs", "Pet bonus: ${p.label}", if (deal.bought) "Sold out" else "",
-                if (deal.bought) null else deal.gems.toString(), "gem", if (deal.bought) "SOLD" else "BUY", !deal.bought && d.gems >= deal.gems, false) {
-                val ok = g.buyDeal(i); if (ok) { host.sfx(Sfx.PET); showBanner("${p.name.uppercase()} +${deal.eggs} EGGS", hex("9bff7a")) }; ok
+        for ((sec, title) in SHOP_SECTIONS) {
+            rows += section(title)
+            when (sec) {
+                "chest" -> for (c in CHESTS) rows += upgradeRow("chest:${c.id}", { x, y -> Art.chest(gfx, c, x + 21.0, y + 24.0, 0.7) },
+                    c.name, "${c.items} pieces of gear",
+                    when (c.id) { "titan" -> "1st is Epic or better!"; "legend" -> "All Epic or Legendary!"; else -> "%.1f%% Epic+".format(c.odds[2] * 100 + c.odds[3] * 100) },
+                    c.gems.toString(), "gem", "OPEN", d.gems >= c.gems, true) {
+                    val items = g.openChest(c.id); if (items != null) modal = LootModal(c.name.uppercase(), items, null); items != null
+                }
+                "skin" -> for (sk in SKINS) {
+                    val owned = sk.id in d.skins
+                    val wearing = d.skin == sk.id
+                    rows += upgradeRow("skin:${sk.id}", { x, y -> Art.heroPortrait(gfx, sk.apply(HERO_LOOK), x.toDouble(), y.toDouble(), 42.0, hex("c9a02a")) },
+                        sk.name, "Hero outfit (looks only)", if (wearing) "Wearing" else if (owned) "Owned" else "",
+                        if (owned) null else sk.gems.toString(), "gem", when { wearing -> "TAKE OFF"; owned -> "WEAR"; else -> "BUY" },
+                        owned || d.gems >= sk.gems, !owned) {
+                        val ok = g.buySkin(sk.id); if (ok && !owned) showBanner("${sk.name.uppercase()}!", hex("ffd23a")); ok
+                    }
+                }
+                else -> for (item in SHOP_ITEMS.filter { it.section == sec }) {
+                    val bought = g.shopBought(item)
+                    val active = d.buffs[item.id]
+                    val lvl = g.shopLevel(item.id)
+                    val line2 = when {
+                        bought && item.kind == "perm" -> "Owned"
+                        item.kind == "level" -> "Level $lvl/${item.maxLevel}"
+                        active != null -> "Active ${fmtTime(active)}"
+                        else -> ""
+                    }
+                    rows += upgradeRow("shop:${item.id}", { x, y -> shopIcon(item.icon, x, y) },
+                        item.name, item.desc, line2, if (bought) null else item.gems.toString(), "gem",
+                        when { bought -> "OWNED"; active != null -> "ACTIVE"; else -> "BUY" },
+                        !bought && active == null && d.gems >= item.gems, item.kind == "perm" || item.kind == "level") {
+                        val msg = g.buyShopItem(item.id)
+                        if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff"))
+                        msg != null
+                    }
+                    if (sec == "eggs" && item.id == "eggs20") {
+                        val deals = g.currentDeals()
+                        rows += section("DAILY DEALS - NEW IN ${fmtTime((DEAL_MS - System.currentTimeMillis() % DEAL_MS) / 1000.0)}")
+                        deals.list.forEachIndexed { i, deal ->
+                            val p = petDef(deal.pet) ?: return@forEachIndexed
+                            rows += upgradeRow("deal:$i", { x, y -> Art.petPortrait(gfx, p, x.toDouble(), y.toDouble(), 42.0, true) },
+                                "${p.name} x${deal.eggs} eggs", "Pet bonus: ${p.label}", if (deal.bought) "Sold out" else "",
+                                if (deal.bought) null else deal.gems.toString(), "gem", if (deal.bought) "SOLD" else "BUY", !deal.bought && d.gems >= deal.gems, false) {
+                                val ok = g.buyDeal(i); if (ok) { host.sfx(Sfx.PET); showBanner("${p.name.uppercase()} +${deal.eggs} EGGS", hex("9bff7a")) }; ok
+                            }
+                        }
+                    }
+                }
             }
+        }
+        return rows
+    }
+
+    private fun shopIcon(key: String, x: Int, y: Int) {
+        when (key) {
+            "chest_titan" -> { gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("2a5f8a")); Art.chest(gfx, CHESTS[2], x + 21.0, y + 24.0, 0.7) }
+            "relic" -> { gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("5a2a8a")); Art.relic(gfx, x + 21.0, y + 22.0, 14.0) }
+            "egg" -> { gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("3a7a4a")); Art.egg(gfx, x + 21.0, y + 22.0, 13.0) }
+            else -> Art.icon(gfx, key, x.toDouble(), y.toDouble(), 42.0)
+        }
+    }
+
+    // ------------------------------------------------------------------ skill tree
+    private fun skillTreeRows(): List<Row> {
+        val rows = ArrayList<Row>()
+        TREE_BRANCHES.forEachIndexed { b, (name, color) ->
+            rows += section("$name PATH")
+            for (n in SKILL_TREE.filter { it.branch == b }) {
+                val lvl = g.st(n.id)
+                val maxed = lvl >= n.max
+                rows += upgradeRow("tree:${n.id}", { x, y ->
+                    gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex(color).shade(-0.2))
+                    text("${lvl}", x + 21, y + 8, Color.WHITE, 3, 1)
+                }, "${n.name} LV $lvl/${n.max}", if (lvl > 0) n.desc(lvl) else "Not learned",
+                    if (maxed) "Max level" else "Next: ${n.desc(lvl + 1)}",
+                    if (maxed) null else "1 SP", "", if (maxed) "MAX" else if (lvl == 0) "LEARN" else "UPGRADE",
+                    !maxed && g.spFree() > 0, true) { g.buyNode(n.id) }
+            }
+        }
+        rows += section("MORE SKILL POINTS")
+        rows += upgradeRow("tree:more", { x, y -> Art.icon(gfx, "tome", x.toDouble(), y.toDouble(), 42.0) },
+            "Skill Book", "+3 skill points", "Also in the shop", "150", "gem", "BUY", d.gems >= 150, false) {
+            val msg = g.buyShopItem("sp_pack"); if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff")); msg != null
+        }
+        rows += upgradeRow("tree:respec", { x, y -> Art.icon(gfx, "prestige", x.toDouble(), y.toDouble(), 42.0) },
+            "Forget Skills", "Refund every skill point", "", "50", "gem", "RESET", d.gems >= 50 && d.skillTree.isNotEmpty(), false) {
+            g.buyShopItem("respec") != null
+        }
+        return rows
+    }
+
+    // ------------------------------------------------------------------ quests & daily login
+    private fun questRows(): List<Row> {
+        val rows = ArrayList<Row>()
+        rows += section("DAILY LOGIN - DAY ${g.loginDay() + 1} OF 7")
+        rows += Row(64) { x, y, w ->
+            val cell = (w - 6) / 7
+            for (i in 0 until 7) {
+                val cx = x + 3 + i * cell
+                val done = i < g.loginDay() || (i == g.loginDay() && !g.loginReady())
+                val today = i == g.loginDay()
+                gfx.fill(rrect(cx + 1.0, y + 4.0, cell - 2.0, 56.0, 5.0), when { done -> hex("2a4a2a"); today -> hex("4a4d5e"); else -> hex("34374a") })
+                if (today && g.loginReady()) { gfx.stroke = stroke(2f); gfx.color = hex("ffd23a"); gfx.draw(rrect(cx + 1.0, y + 4.0, cell - 2.0, 56.0, 5.0)) }
+                text("DAY ${i + 1}", cx + cell / 2, y + 8, Color.WHITE, 1, 1)
+                when (i) {
+                    1, 4 -> Art.egg(gfx, cx + cell / 2.0, y + 32.0, 9.0)
+                    3 -> Art.chest(gfx, null, cx + cell / 2.0, y + 34.0, 0.4)
+                    6 -> Art.gem(gfx, cx + cell / 2.0, y + 32.0, 9.0)
+                    else -> Art.coin(gfx, cx + cell / 2.0, y + 32.0, 9.0)
+                }
+                if (done) text("OK", cx + cell / 2, y + 46, hex("7aff7a"), 1, 1)
+            }
+        }
+        rows += upgradeRow("login", { x, y -> Art.icon(gfx, "clock", x.toDouble(), y.toDouble(), 42.0) },
+            "Daily Reward", LOGIN_REWARDS[g.loginDay()], if (g.loginReady()) "Ready to collect!" else "Come back tomorrow",
+            null, "", if (g.loginReady()) "COLLECT" else "DONE", g.loginReady(), true) {
+            val msg = g.claimLogin(); if (msg != null) showBanner(msg.uppercase(), hex("ffd23a")); msg != null
+        }
+        rows += section("DAILY QUESTS")
+        g.quests().list.forEachIndexed { i, q ->
+            val prog = g.questProgress(q)
+            val done = prog >= q.target
+            rows += upgradeRow("quest:$i", { x, y -> Art.icon(gfx, "quest", x.toDouble(), y.toDouble(), 42.0) },
+                g.questDef(q).text(q.target), "Progress $prog/${q.target}",
+                "Reward: " + when (i) { 0 -> "gold"; 1 -> "3 pet eggs"; else -> "relics" },
+                null, "", when { q.claimed -> "DONE"; done -> "CLAIM"; else -> "${(prog * 100 / max(1, q.target))}%" }, done && !q.claimed, done && !q.claimed) {
+                val msg = g.claimQuest(i); if (msg != null) showBanner(msg.uppercase(), hex("ffd23a")); msg != null
+            }
+        }
+        rows += upgradeRow("quest:bonus", { x, y -> gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("1a5a8a")); Art.gem(gfx, x + 21.0, y + 22.0, 13.0) },
+            "Finish all 3 quests", "Bonus reward", if (d.quests.bonusClaimed) "Collected" else "", "2", "gem",
+            if (d.quests.bonusClaimed) "DONE" else "CLAIM", g.questBonusReady(), true) {
+            val msg = g.claimQuestBonus(); if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff")); msg != null
         }
         return rows
     }
@@ -965,10 +1109,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                 gfx.fill(Rectangle2D.Double(sx, sy, L, T), c)
                 gfx.fill(Rectangle2D.Double(if (cx == 0.0) 0.0 else cx - T, if (cy == 0.0) 0.0 else cy - L, T, L), c)
             }
-            val lines = listOf("Press W or D to make the screen bigger,", "S or A to make it smaller, until the four", "yellow corners just touch the edges", "of your Minecraft window.")
+            val lines = listOf("Click + or - (or press W/S) until the four", "yellow corners just touch the edges", "of your Minecraft window.", "")
             lines.forEachIndexed { i, l -> text(l, x + w / 2, y + 50 + i * 14, hex("c8cbd8"), 1, 1) }
             text("SIZE ${(zoom * 100).toInt()}%", x + w / 2, y + 116, hex("ffe34a"), 2, 1)
             text("(Using Minecraft's default FOV of 70 fits best)", x + w / 2, y + 140, hex("8a8ea6"), 1, 1)
+            button(x + w / 2 - 110, y + 106, 36, 28, "-", hex("5b6074")) { nudge(0, 1) }
+            button(x + w / 2 + 74, y + 106, 36, 28, "+", hex("5b6074")) { nudge(0, -1) }
             button(x + w / 2 - 60, y + h - 50, 120, 32, "DONE", hex("4f9a1a"), id = "m:done") {
                 if (d.screenZoom <= 0) d.screenZoom = zoom
                 close()
@@ -1025,8 +1171,11 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                 gfx.fill(rrect(bx, ry + 8.0, 150.0, 12.0, 4.0), hex("151726"))
                 gfx.fill(rrect(bx, ry + 8.0, 150 * min(1.0, value / target), 12.0, 4.0), if (next == null) hex("4f9a1a") else hex("e0901a"))
                 text("${fmt(min(value, target))}/${fmt(target)}", (bx + 75).toInt(), ry + 11, Color.WHITE, 1, 1)
-                if (next != null) { Art.gem(gfx, x + w - 64.0, ry + 15.0, 6.0); text("${a.gems[next]}", x + w - 54, ry + 11, hex("6ae4ff")) }
-                else text("DONE", x + w - 60, ry + 11, hex("7aff7a"))
+                when {
+                    next == null -> text("DONE", x + w - 60, ry + 11, hex("7aff7a"))
+                    g.achievementGems(a, next) > 0 -> { Art.gem(gfx, x + w - 64.0, ry + 15.0, 6.0); text("${g.achievementGems(a, next)}", x + w - 54, ry + 11, hex("6ae4ff")) }
+                    else -> { Art.coin(gfx, x + w - 64.0, ry + 15.0, 6.0); text("gold", x + w - 54, ry + 11, hex("ffd23a")) }
+                }
             }
         }
     }
@@ -1061,6 +1210,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             }
             button(x + 16, y + h - 74, 140, 28, "SOUND: " + if (d.sound) "ON" else "OFF", hex("3a6ab0")) { d.sound = !d.sound }
             button(x + w / 2 - 70, y + h - 74, 140, 28, "SCREEN SIZE", hex("3a8a6a")) { calibrate() }
+            text("CURSOR SPEED ${(d.cursorSpeed * 100).toInt()}%", x + w / 2, y + h - 104, Color.WHITE, 1, 1)
+            button(x + w / 2 - 110, y + h - 110, 30, 20, "-", hex("5b6074")) { d.cursorSpeed = clamp(d.cursorSpeed - 0.1, 0.3, 3.0) }
+            button(x + w / 2 + 80, y + h - 110, 30, 20, "+", hex("5b6074")) { d.cursorSpeed = clamp(d.cursorSpeed + 0.1, 0.3, 3.0) }
             button(x + w - 156, y + h - 74, 140, 28, "RESET", hex("a8281a")) {
                 modal = ConfirmModal("WIPE ALL PROGRESS?", listOf("Everything will be lost,", "including relics and gems.", "", "This cannot be undone!"), "ARE YOU SURE?") { host.resetProgress() }
             }

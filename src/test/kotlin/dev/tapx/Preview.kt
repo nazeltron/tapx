@@ -58,26 +58,28 @@ fun main(args: Array<String>) {
     }
     fun step(n: Int) = repeat(n) { game.update(0.1); screen.update(0.1) }
     data.screenZoom = 1.0
+    data.gems = 2400
     step(3)
     repeat(4) { game.tap(false); step(1) }
     shot("battle-hero")
-    // keyboard helpers: press and release a key (forward, back, left, right, jump, sneak)
-    fun key(k: Int) {
-        val on = BooleanArray(6); on[k] = true
-        screen.render(); screen.input(on[0], on[1], on[2], on[3], on[4], on[5], false, false)
-        screen.input(false, false, false, false, false, false, on[4], on[5]); step(1)
-    }
-    val W = 0; val S = 1; val A = 2; val D = 3; val SPACE = 4; val SHIFT = 5
-    key(SHIFT)                     // jump to the Hero tab button
-    key(D); key(SPACE); shot("allies")
-    key(D); key(SPACE); key(S); key(S); shot("gear")
-    key(SHIFT); key(D); key(D); key(SPACE); shot("pets")
-    key(D); key(SPACE); key(S); key(S); key(S); key(S); key(S); key(S); key(S); shot("artifacts-scrolled")
-    key(SHIFT); key(D); key(SPACE); shot("shop")
-    data.stage = 45; game.monster = null; step(8); shot("lava-world")
-    data.farming = false; data.wave = WAVES; game.monster = null; step(8); shot("boss")
+    // mouse helpers: the cursor starts in the middle; 7 screen pixels per degree of head turn
+    var cx = 448.0; var cy = 256.0
+    fun pointAt(x: Int, y: Int) { screen.mouse((x - cx) / 7, (y - cy) / 7); cx = x.toDouble(); cy = y.toDouble(); screen.render() }
+    fun clickAt(x: Int, y: Int) { pointAt(x, y); screen.click(); step(1) }
+    fun tab(i: Int) = clickAt(512 + 6 + i * 46 + 22, 6 + 23)
+    tab(1); shot("allies")
+    tab(2); pointAt(820, 140); shot("skills")
+    clickAt(840, 140); clickAt(840, 140); shot("skills-bought")
+    tab(6); pointAt(830, 300); shot("quests")
+    tab(7); shot("shop")
+    repeat(8) { clickAt(888 - 30, 6 + 88 + 10) }; pointAt(820, 300); shot("shop-scrolled")
+    repeat(30) { clickAt(888 - 30, 6 + 88 + 10) }; pointAt(820, 300); shot("shop-skins")
+    clickAt(840, 300); shot("skin-bought")
+    data.stage = 25; data.farming = false; data.wave = WAVES; game.monster = null; step(8); shot("titan-lord")
+    data.stage = 65; data.wave = 2; game.monster = null; step(8); shot("ocean")
+    data.stage = 75; game.monster = null; step(8); shot("sky")
     screen.calibrate(); step(1); shot("calibrate")
-    key(SHIFT)
+    screen.input(false, false, false, false, false, true, false, false); step(1)
     // Which pixels change between idle frames? (red = changed) -> bandwidth hot spots
     data.stage = 3; game.monster = null; step(20)
     val diff = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)

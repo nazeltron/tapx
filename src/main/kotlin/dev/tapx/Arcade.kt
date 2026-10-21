@@ -7,7 +7,10 @@ import io.netty.channel.ChannelInboundHandlerAdapter
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.protocol.game.ClientboundSetCameraPacket
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundSwingPacket
+import io.papermc.paper.entity.TeleportFlag
+import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Location
@@ -76,10 +79,16 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
     private val cols get() = Session.SCREEN_COLS
     private val rows get() = Session.SCREEN_ROWS
 
-    /** Where the camera sits for a slot: centred on the screen, at the distance that fills the view. */
+    /**
+     * Where the camera sits for a slot: centred on the screen, close enough that the screen covers
+     * the whole view (sized by width for a 16:9 window, so nothing but the game is visible).
+     */
     private fun cameraLocation(slot: Int, zoom: Double): Location {
         val fov = Math.toRadians(plugin.config.getDouble("screen-fov", 70.0).coerceIn(30.0, 110.0))
-        val distance = rows / (2 * tan(fov / 2)) / (if (zoom > 0) zoom else 1.0)
+        val aspect = plugin.config.getDouble("screen-aspect", 16.0 / 9.0).coerceIn(1.0, 3.0)
+        val byHeight = rows / (2 * tan(fov / 2))
+        val byWidth = cols / (2 * tan(fov / 2) * aspect)
+        val distance = minOf(byHeight, byWidth) / (if (zoom > 0) zoom else 1.0)
         // frames: top row at y=102, columns sx-3..sx+3, hanging in the z=0 block row facing south
         return Location(world, slot * 64 + 0.5, 101.0, 1.0 / 16 + distance, 180f, 0f)
     }
@@ -111,6 +120,9 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
                 a.addTransientModifier(AttributeModifier(reachKey, 16.0, AttributeModifier.Operation.ADD_NUMBER))
             }
             for (o in Bukkit.getOnlinePlayers()) if (o != p && isPlaying(o)) { o.hidePlayer(plugin, p); p.hidePlayer(plugin, o) }
+            // Sit on the camera entity: seated players send their head rotation every tick (our mouse),
+            // even while their view is locked to the camera.
+            camera.addPassenger(p)
             installInput(p, s)
             // let the client learn about the camera entity before switching the view to it
             plugin.server.scheduler.runTaskLater(plugin, Runnable {
@@ -123,21 +135,17 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         }
     }
 
-    private fun lockCamera(p: Player, resend: Boolean = false) {
+    /** Point the client's view at the camera entity (only the client is told; the server keeps the player as camera). */
+    private fun lockCamera(p: Player, @Suppress("UNUSED_PARAMETER") resend: Boolean = false) {
         val seat = seats[p.uniqueId] ?: return
-        allowCamera += p.uniqueId
-        try {
-            if (p.spectatorTarget != seat.camera) p.spectatorTarget = seat.camera
-            else if (resend) (p as CraftPlayer).handle.connection.send(ClientboundSetCameraPacket((seat.camera as CraftEntity).handle))
-        } finally {
-            allowCamera -= p.uniqueId
-        }
+        if (!seat.camera.passengers.contains(p)) seat.camera.addPassenger(p)
+        (p as CraftPlayer).handle.connection.send(ClientboundSetCameraPacket((seat.camera as CraftEntity).handle))
     }
 
     /** Move the camera closer/further so the screen fits this player's field of view. */
     fun applyZoom(p: Player, zoom: Double) {
         val seat = seats[p.uniqueId] ?: return
-        seat.camera.teleport(cameraLocation(seat.slot, zoom))
+        seat.camera.teleport(cameraLocation(seat.slot, zoom), TeleportFlag.EntityState.RETAIN_PASSENGERS)
     }
 
     /** Leave the game screen: restore game mode and send the player back where they came from. */
@@ -148,7 +156,8 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         removeInput(p)
         leaving += p.uniqueId
         try {
-            if (p.spectatorTarget != null) p.spectatorTarget = null
+            (p as CraftPlayer).handle.connection.send(ClientboundSetCameraPacket(p.handle)) // view back to the player
+            seat.camera.removePassenger(p)
             seat.camera.remove()
             p.getAttribute(Attribute.ENTITY_INTERACTION_RANGE)?.removeModifier(reachKey)
             for (o in Bukkit.getOnlinePlayers()) if (o != p) { o.showPlayer(plugin, p); p.showPlayer(plugin, o) }
@@ -188,6 +197,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
                 ch.pipeline().addBefore("packet_handler", HANDLER, object : ChannelInboundHandlerAdapter() {
                     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
                         if (msg is ServerboundSwingPacket) s.click()
+                        else if (msg is ServerboundMovePlayerPacket && msg.hasRotation()) s.look(msg.getYRot(0f), msg.getXRot(0f))
                         super.channelRead(ctx, msg)
                     }
                 })
@@ -209,6 +219,12 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
     @EventHandler
     fun onStopSpectating(e: PlayerStopSpectatingEntityEvent) {
         if (isPlaying(e.player) && e.player.uniqueId !in leaving) e.isCancelled = true // shift = "back" in the game
+    }
+
+    @EventHandler
+    fun onDismount(e: EntityDismountEvent) {
+        val p = e.entity as? Player ?: return
+        if (isPlaying(p) && p.uniqueId !in leaving) e.isCancelled = true
     }
 
     @EventHandler

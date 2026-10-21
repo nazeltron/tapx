@@ -1,7 +1,8 @@
 # TapX configuration
 
-# Players start with this many gems.
-starting-gems: 100
+# Players start with this many gems. Gems are the paid currency (sold on your web store and
+# given with /tapx gems give <player> <amount>), so keep this small.
+starting-gems: 25
 
 # Most hours of "while you were away" gold a player can collect at once.
 max-offline-hours: 12
@@ -16,8 +17,7 @@ autosave-minutes: 5
 # Put players straight into the game when they join (no /tapx needed).
 # Players with the permission tapx.bypass are not auto-started.
 auto-start: true
-# Let players leave the game screen (EXIT button and /tapx leave). Admins can always leave.
-allow-exit: false
+# Only operators (tapx.admin) can leave the game screen (EXIT button or /tapx leave).
 
 # The game is shown on a wall of maps in a private void world (no resource pack needed).
 # Name of that world (created automatically).
@@ -25,6 +25,8 @@ arcade-world: tapx_arcade
 # The field of view (degrees) the screen is sized for; 70 is Minecraft's default.
 # Each player can fine-tune the size in-game (Settings -> Screen size).
 screen-fov: 70
+# Window shape the screen is sized for (16:9). The screen covers the whole view.
+screen-aspect: 1.778
 # Screen updates per second (higher = smoother, more bandwidth).
 fps: 10
 # Background threads used to draw screens.

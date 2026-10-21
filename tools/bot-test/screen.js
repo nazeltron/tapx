@@ -60,27 +60,39 @@ async function key(name, hold = 120) {
 }
 async function click(wait = 120) { bot._client.write('arm_animation', { hand: 0 }); await sleep(wait); }
 let camera = null;
+// Mouse: a seated vanilla client sends its head rotation every tick; we do the same.
+let yaw = 180, pitch = 0;
+async function mouse(dYaw, dPitch, steps = 6) {
+  for (let i = 0; i < steps; i++) {
+    yaw += dYaw / steps; pitch += dPitch / steps;
+    bot._client.write('look', { yaw, pitch, flags: { onGround: false, hasHorizontalCollision: false } });
+    await sleep(50);
+  }
+  await sleep(250);
+}
+// cursor starts in the middle (448,256); 7 screen pixels per degree
+let cx = 448, cy = 256;
+async function pointAt(x, y) { await mouse((x - cx) / 7, (y - cy) / 7); cx = x; cy = y; }
 bot._client.on('camera', p => { camera = p.cameraId; });
 bot.once('spawn', async () => {
   try {
     await sleep(4500); // auto-start: no /tapx needed
-    console.log('gamemode', bot.game.gameMode, 'camera entity', camera, 'frames', Object.keys(frames).length);
-    console.log('map packets', mapPackets, 'bytes', mapBytes);
+    console.log('gamemode', bot.game.gameMode, 'camera entity', camera, 'vehicle', !!bot.vehicle, 'frames', Object.keys(frames).length);
     shot('01-start');
-    await key('jump', 150); await sleep(300);           // closes the first-time screen-size popup (DONE)
+    await pointAt(448 + 128, 256 + 98 - 30); await click(); // "+" in the screen-size popup? (just aims and clicks)
+    await pointAt(448, 256 + 90); await click(300);        // DONE
     shot('02-after-done');
-    const b0 = mapBytes; await sleep(2000); console.log('bandwidth bytes/s ~', (mapBytes - b0) / 2);
-    for (let i = 0; i < 15; i++) await click(100);      // left-click = attack
-    await sleep(400); shot('03-after-taps');
-    await key('shift');                                 // selection -> Hero tab
-    await key('right'); await key('jump');              // -> Allies tab
+    await pointAt(356, 300);                               // the monster
+    for (let i = 0; i < 15; i++) await click(100);
+    await sleep(300); shot('03-taps');
+    await pointAt(512 + 6 + 61 + 29, 30); await click(400); // Allies tab
     shot('04-allies');
-    for (let i = 0; i < 3; i++) await key('backward');  // down the list
-    shot('05-allies-down');
-    await key('shift'); for (let i = 0; i < 4; i++) await key('right'); await key('jump'); // -> Shop
-    await key('backward'); await key('jump'); await sleep(800); // open the free chest
-    shot('06-shop-chest');
-    await key('shift'); await sleep(300); shot('07-closed');
+    await pointAt(512 + 6 + 5 * 61 + 29, 30); await click(400); // Shop tab
+    shot('05-shop');
+    await pointAt(512 + 378 - 60, 200);                      // hover a shop button
+    shot('06-hover');
+    await mouse(0, 80, 12);                                   // look way down: forces a re-centre, cursor stays sane
+    await mouse(0, -10); shot('07-after-recentre');
     console.log('total map packets', mapPackets, 'bytes', mapBytes);
   } catch (e) { console.log('TEST ERROR', e); }
   bot.quit(); setTimeout(() => process.exit(0), 500);

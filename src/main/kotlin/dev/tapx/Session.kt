@@ -42,6 +42,36 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         if (active) inbox.add(action) else action()
     }
 
+    // ---------------------------------------------------------- mouse (head rotation while seated)
+    private var lastYaw = Float.NaN
+    private var lastPitch = 0f
+    private var recentring = 0 // packets left to wait for a re-centre to arrive
+
+    /**
+     * The client's head rotation, sent every tick because the player is seated. The view comes from
+     * the camera entity, so the rotation is free to act as a mouse. Called on the network thread.
+     */
+    fun look(yaw: Float, pitch: Float) {
+        if (recentring > 0) {
+            // ignore packets until the client has applied our re-centre (pitch back near 0)
+            if (kotlin.math.abs(pitch) < 3f || --recentring == 0) { recentring = 0; lastYaw = yaw; lastPitch = pitch }
+            return
+        }
+        if (lastYaw.isNaN()) { lastYaw = yaw; lastPitch = pitch; return }
+        var dy = yaw - lastYaw
+        while (dy > 180) dy -= 360
+        while (dy < -180) dy += 360
+        val dp = pitch - lastPitch
+        lastYaw = yaw; lastPitch = pitch
+        if (dy != 0f || dp != 0f) post { screen.mouse(dy.toDouble(), dp.toDouble()) }
+        // the client's pitch stops at +-90, so quietly turn it back to level before it gets there
+        if (kotlin.math.abs(pitch) > 50f) {
+            recentring = 20
+            (player as org.bukkit.craftbukkit.entity.CraftPlayer).handle.connection.send(
+                net.minecraft.network.protocol.game.ClientboundPlayerRotationPacket(yaw, false, 0f, false))
+        }
+    }
+
     /** Movement keys from the client (WASD, space, shift). Called on the main thread. */
     fun input(i: org.bukkit.Input) {
         val now = booleanArrayOf(i.isForward, i.isBackward, i.isLeft, i.isRight, i.isJump, i.isSneak)
@@ -145,7 +175,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
 
     override fun leaderboard(): List<TopEntry> = plugin.leaderboard()
 
-    override val allowExit: Boolean get() = plugin.config.getBoolean("allow-exit", false) || player.hasPermission("tapx.admin")
+    override val allowExit: Boolean get() = player.hasPermission("tapx.admin")
 
     override fun setZoom(zoom: Double) {
         plugin.server.scheduler.runTask(plugin, Runnable { plugin.arcade.applyZoom(player, zoom) })
@@ -155,10 +185,11 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         val old = d
         game.d = PlayerData().apply {
             name = player.name
-            gems = plugin.config.getLong("starting-gems", 100)
+            gems = plugin.config.getLong("starting-gems", 25)
             returnTo = old.returnTo
             returnMode = old.returnMode
             screenZoom = old.screenZoom
+            cursorSpeed = old.cursorSpeed
         }
         game.monster = null
     }

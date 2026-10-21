@@ -20,7 +20,7 @@ interface GameEvents {
     fun onAchievement(group: AchGroup, target: Double, gems: Int) {}
 }
 
-class Monster(val maxHp: Double, val boss: Boolean, val mimic: Boolean, val name: String, val seed: Long) {
+class Monster(val maxHp: Double, val boss: Boolean, val mimic: Boolean, val name: String, val seed: Long, val lord: Boolean = false) {
     var hp = maxHp
     var dead = false
     var age = 0.0
@@ -35,6 +35,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     var monster: Monster? = null
     var bossTimer = 0.0
     private var autoTapAcc = 0.0
+    private var rainTimer = 0.0
     private var nextSpawn = 0.0
 
     // ---------------------------------------------------------- lookups
@@ -43,6 +44,10 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun skillLvl(id: String) = d.skills[id] ?: 0
     fun buffOn(id: String) = (d.buffs[id] ?: 0.0) > 0
     fun petLevel(id: String?) = d.pets[id]?.lvl ?: 0
+    /** Skill tree node level. */
+    fun st(id: String) = d.skillTree[id] ?: 0
+    fun owns(id: String) = id in d.owned
+    fun shopLevel(id: String) = d.shopLevels[id] ?: 0
 
     fun gearValue(id: String): Double {
         val g = gearDef(id) ?: return 0.0
@@ -53,24 +58,28 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     private fun gearBonus(stat: String) =
         GEAR_SLOTS.filter { it.stat == stat }.sumOf { s -> d.equipped[s.id]?.let { gearValue(it) } ?: 0.0 }
 
-    private fun petBonus(stat: String): Double {
+    fun petBonus(stat: String): Double {
         val p = petDef(d.activePet) ?: return 0.0
         return if (p.stat == stat) p.per * petLevel(p.id) else 0.0
     }
 
     // ---------------------------------------------------------- formulas
     fun monsterHp(stage: Int) = 10 * 1.39.pow(stage - 1) * (1 + ((stage - 1) / 5) * 0.08)
-    fun bossHp(stage: Int) = monsterHp(stage) * 6 * (1 - 0.04 * art("crown"))
-    fun goldMult() = (1 + 0.25 * art("idol")) * (1 + gearBonus("gold")) * (1 + petBonus("gold")) *
+    fun isLordStage(stage: Int) = stage % 25 == 0
+    fun bossHp(stage: Int) = monsterHp(stage) * 6 * (1 - 0.04 * art("crown")) * (if (isLordStage(stage)) 3.0 else 1.0)
+    fun goldMult() = (1 + 0.25 * art("idol")) * (1 + gearBonus("gold")) * (1 + petBonus("gold")) * (1 + 0.1 * st("r_greed")) *
+        (if (owns("vip_gold")) 2.0 else 1.0) * (if (buffOn("golden_hour")) 3.0 else 1.0) *
         (if (buffOn("midas")) skillPower("midas", skillLvl("midas")) else 1.0)
     fun killGold(stage: Int) = ceil(monsterHp(stage) * 0.2) * goldMult()
 
-    private fun allDamageMult() = (1 + 0.25 * art("blade")) * (if (buffOn("surge")) 2.0 else 1.0)
+    private fun allDamageMult() = (1 + 0.25 * art("blade")) * (1 + 0.1 * st("w_vets")) * (if (owns("double_dmg")) 2.0 else 1.0) *
+        (if (buffOn("surge")) 2.0 else 1.0) * (if (buffOn("battle_frenzy")) 5.0 else 1.0)
+    private fun bossDamageMult() = 1 + petBonus("boss") + 0.1 * st("k_bane") + 0.1 * art("slayer")
 
     fun heroMilestoneMult(lvl: Int) = HERO_MILESTONES.filter { lvl >= it.first }.fold(1.0) { m, x -> m * x.second }
     fun heroBaseDps(h: Hero, lvl: Int) = if (lvl > 0) h.dps * lvl * heroMilestoneMult(lvl) else 0.0
-    fun heroCost(h: Hero, lvl: Int) = h.cost * 1.075.pow(lvl)
-    fun allyMult() = (1 + 0.35 * art("banner")) * (1 + gearBonus("ally")) * (1 + petBonus("ally")) * allDamageMult()
+    fun heroCost(h: Hero, lvl: Int) = h.cost * 1.075.pow(lvl) * max(0.5, 1 - 0.02 * st("w_bargain"))
+    fun allyMult() = (1 + 0.35 * art("banner")) * (1 + gearBonus("ally")) * (1 + petBonus("ally")) * (1 + 0.15 * st("w_rally")) * allDamageMult()
     fun rawHeroDps() = HEROES.sumOf { heroBaseDps(it, heroLvl(it.id)) }
     fun heroDps(buffed: Boolean = true) =
         rawHeroDps() * allyMult() * (if (buffed && buffOn("warcry")) skillPower("warcry", skillLvl("warcry")) else 1.0)
@@ -78,25 +87,39 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun tapBase(l: Int) = l * 1.05.pow(l - 1)
     fun tapCost(l: Int) = 5 * 1.074.pow(l - 1)
     fun tapDamage(buffed: Boolean = true): Double {
-        val base = tapBase(d.tapLevel) + 0.03 * rawHeroDps() * allyMult()
-        return base * (1 + 0.4 * art("gauntlet")) * (1 + gearBonus("tap")) * (1 + petBonus("tap")) * allDamageMult() *
+        val base = tapBase(d.tapLevel) + (0.03 + 0.005 * st("w_drill")) * rawHeroDps() * allyMult()
+        return base * (1 + 0.4 * art("gauntlet")) * (1 + gearBonus("tap")) * (1 + petBonus("tap")) * (1 + 0.15 * st("k_edge")) * allDamageMult() *
             (if (buffed && buffOn("berserk")) skillPower("berserk", skillLvl("berserk")) else 1.0)
     }
 
-    fun critChance() = min(0.9, 0.02 + 0.01 * art("clover") + (if (buffOn("eagle")) skillPower("eagle", skillLvl("eagle")) / 100 else 0.0))
-    fun critMult() = 8 * (1 + 0.5 * art("fang")) * (1 + gearBonus("crit")) * (1 + petBonus("crit"))
+    fun critChance() = min(0.9, 0.02 + 0.01 * art("clover") + 0.005 * st("k_eye") + (if (buffOn("eagle")) skillPower("eagle", skillLvl("eagle")) / 100 else 0.0))
+    fun critMult() = 8 * (1 + 0.5 * art("fang")) * (1 + gearBonus("crit")) * (1 + petBonus("crit")) * (1 + 0.25 * st("k_heavy"))
     fun bossTime() = BOSS_TIME + 2 * art("hourglass")
-    fun maxMana() = 50 + 5 * art("crystal")
-    fun manaRegen() = (1.0 / 3) * (1 + 0.1 * art("crystal")) * (1 + petBonus("mana"))
-    fun spellDuration() = 30.0 + 4 * art("tome")
+    fun maxMana() = 50 + 5 * art("crystal") + 5 * st("s_deep") + (if (owns("mana_well")) 25 else 0)
+    fun manaRegen() = (1.0 / 3) * (1 + 0.1 * art("crystal")) * (1 + petBonus("mana")) * (1 + 0.1 * st("s_flow"))
+    fun spellDuration() = 30.0 + 4 * art("tome") + 3 * st("s_long")
+    fun thunderMult() = skillPower("thunder", skillLvl("thunder")) * (1 + 0.25 * st("s_storm") + 0.4 * art("totem") + petBonus("thunder"))
     private fun autoTapRate() =
-        (if (buffOn("frenzy")) skillPower("frenzy", skillLvl("frenzy")) else 0.0) + (if (buffOn("phantom")) 6.0 else 0.0)
+        (if (buffOn("frenzy")) skillPower("frenzy", skillLvl("frenzy")) else 0.0) + (if (buffOn("phantom")) 6.0 else 0.0) + shopLevel("auto_tap")
+    fun mimicChance() = 0.025 + 0.01 * art("key") + 0.005 * st("r_mimic")
+    fun skipChance() = 0.02 * art("boots") + 0.01 * st("r_warp")
+    fun wispRate() = 1 + 0.08 * art("lantern")
+
+    // ---------------------------------------------------------- skill tree
+    fun spTotal() = d.stats.bestStage / 15 + d.stats.prestiges * 2 + d.bonusSp
+    fun spFree() = spTotal() - d.skillTree.values.sum()
+    fun buyNode(id: String): Boolean {
+        val n = SKILL_TREE.firstOrNull { it.id == id } ?: return false
+        if (st(id) >= n.max || spFree() <= 0) return false
+        d.skillTree[id] = st(id) + 1
+        return true
+    }
 
     fun relicsFor(stage: Int) =
         if (stage < PRESTIGE_STAGE) 0L else floor((stage - 15.0).pow(1.6) / 6 * (1 + 0.1 * d.stats.prestiges)).toLong()
     fun artifactCost(a: Artifact, lvl: Int) = ceil(a.base * 1.45.pow(lvl)).toLong()
     fun skillCost(s: Skill, lvl: Int) = s.cost * 12.0.pow(lvl)
-    fun petDamage() = if (d.activePet != null) tapDamage() * (5 + 3 * petLevel(d.activePet)) else 0.0
+    fun petDamage() = if (d.activePet != null) tapDamage() * (5 + 3 * petLevel(d.activePet)) * (1 + 0.3 * art("collar")) else 0.0
 
     // Bulk buying for geometric costs.
     fun bulkCost(c0: Double, r: Double, n: Int) = c0 * (r.pow(n) - 1) / (r - 1)
@@ -107,7 +130,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     // ---------------------------------------------------------- combat
     fun spawnMonster() {
         val boss = !d.farming && d.wave >= WAVES
-        val mimic = !boss && Random.nextDouble() < 0.025 + 0.01 * art("key")
+        val mimic = !boss && Random.nextDouble() < mimicChance()
+        val lord = boss && isLordStage(d.stage)
         val hp = if (boss) bossHp(d.stage) else monsterHp(d.stage)
         // Bosses are seeded by stage so a retried boss is the same one.
         val seed = if (boss) d.stage * 7919L + 13 else Random.nextLong()
@@ -115,6 +139,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         val baseName = NAME_A.random(rnd) + NAME_B.random(rnd)
         val m = when {
             mimic -> Monster(hp, false, true, "Treasure Mimic", seed)
+            lord -> Monster(hp, true, false, "Titan Lord $baseName", seed, lord = true)
             boss -> Monster(hp, true, false, "$baseName ${TITLES.random(rnd)}", seed)
             else -> Monster(hp, false, false, baseName, seed)
         }
@@ -126,7 +151,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     private fun dealDamage(amount: Double) {
         val m = monster ?: return
         if (m.dead) return
-        m.hp -= if (m.boss) amount * (1 + petBonus("boss")) else amount
+        m.hp -= if (m.boss) amount * bossDamageMult() else amount
         if (m.hp <= 0) {
             m.hp = 0.0
             killMonster(m)
@@ -141,15 +166,17 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     private fun killMonster(m: Monster) {
         m.dead = true
         var g = killGold(d.stage)
-        if (m.boss) g *= 5
-        if (m.mimic) g *= 12
+        if (m.boss) g *= 5 * (1 + 0.25 * st("r_loot")) * (if (m.lord) 3 else 1)
+        if (m.mimic) g *= 12 * (1 + 0.5 * art("map"))
         addGold(g)
         d.stats.kills++
+        // Gems are the paid currency: bosses only rarely drop one.
         var gems = 0
         if (m.boss) {
             d.stats.bosses++
-            if (Random.nextDouble() < 0.35) gems = if (Random.nextDouble() < 0.3) 2 else 1
+            if (Random.nextDouble() < (if (m.lord) 0.15 else 0.03)) gems = if (m.lord) 2 else 1
         }
+        if (m.lord) d.relics += max(1, d.stage / 25)
         d.gems += gems
         events.onKill(m, g, gems)
         if (m.boss) advanceStage() else if (!d.farming) d.wave = min(WAVES, d.wave + 1)
@@ -157,8 +184,9 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     }
 
     private fun advanceStage() {
-        val n = if (Random.nextDouble() < 0.02 * art("boots")) 2 else 1
+        val n = if (Random.nextDouble() < skipChance()) 2 else 1
         d.stage += n
+        d.stats.stagesCleared += n
         d.wave = 0
         d.farming = false
         d.maxStage = max(d.maxStage, d.stage)
@@ -212,6 +240,10 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             if (e.value <= 0) it.remove()
         }
         d.mana = min(maxMana().toDouble(), d.mana + manaRegen() * dt)
+        if (buffOn("rain")) {
+            rainTimer -= dt
+            if (rainTimer <= 0) { rainTimer = 3.0; autoLevelAlly() }
+        }
         val m = monster
         if (m == null || m.dead) {
             nextSpawn -= dt
@@ -252,10 +284,21 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         if (d.gold < cost) return false
         d.gold -= cost
         d.tapLevel += n
+        d.stats.upgrades += n
         return true
     }
 
     fun heroUnlocked(i: Int) = i == 0 || heroLvl(HEROES[i - 1].id) > 0
+
+    /** "Make It Rain": level the cheapest unlocked ally by one, if affordable. */
+    private fun autoLevelAlly() {
+        val h = HEROES.filterIndexed { i, _ -> heroUnlocked(i) }.minByOrNull { heroCost(it, heroLvl(it.id)) } ?: return
+        val cost = heroCost(h, heroLvl(h.id))
+        if (d.gold < cost) return
+        d.gold -= cost
+        d.heroes[h.id] = heroLvl(h.id) + 1
+        d.stats.upgrades++
+    }
     fun heroUpgradeInfo(h: Hero): Pair<Int, Double> {
         val c0 = heroCost(h, heroLvl(h.id))
         val n = buyAmount(c0, 1.075)
@@ -269,6 +312,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         if (d.gold < cost) return false
         d.gold -= cost
         d.heroes[id] = heroLvl(id) + n
+        d.stats.upgrades += n
         return true
     }
 
@@ -290,7 +334,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         d.mana -= sk.mana
         d.stats.casts++
         if (id == "thunder") {
-            val dmg = tapDamage() * skillPower("thunder", lvl)
+            val dmg = tapDamage() * thunderMult()
             events.onSkill(id, dmg)
             dealDamage(dmg)
         } else {
@@ -311,18 +355,57 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         return true
     }
 
-    fun buyPerk(id: String): Boolean {
-        val p = PERKS.first { it.id == id }
-        if (d.gems < p.gems) return false
-        if (p.duration > 0 && buffOn(id)) return false
-        d.gems -= p.gems
-        when (id) {
-            "shower" -> addGold(killGold(d.stage) * 60)
-            "flask" -> d.mana = maxMana().toDouble()
-            else -> d.buffs[id] = p.duration
+    // ---------------------------------------------------------- gem shop
+    fun shopBought(item: ShopItem) = when (item.kind) {
+        "perm" -> owns(item.id)
+        "level" -> shopLevel(item.id) >= item.maxLevel
+        else -> false
+    }
+
+    /** Buy a gem shop item. Returns a short result message, or null if it can't be bought. */
+    fun buyShopItem(id: String): String? {
+        val item = SHOP_ITEMS.firstOrNull { it.id == id } ?: return null
+        if (shopBought(item) || d.gems < item.gems) return null
+        if (item.kind == "boost" && buffOn(id)) return null
+        if (id == "respec" && d.skillTree.isEmpty()) return null
+        d.gems -= item.gems
+        val msg = when (id) {
+            "starter" -> {
+                openChestFree(CHESTS.first { it.id == "titan" })
+                grantRandomEggs(10)
+                d.buffs["surge"] = 600.0; d.buffs["golden_hour"] = 1800.0
+                "Starter Pack opened!"
+            }
+            "auto_tap" -> "Auto Tapper level ${shopLevel(id) + 1}"
+            "sp_pack" -> { d.bonusSp += 3; "+3 skill points" }
+            "flask" -> { d.mana = maxMana().toDouble(); "Mana refilled" }
+            "shower" -> { val g = killGold(d.stage) * 60; addGold(g); "+${fmt(g)} gold" }
+            "mountain" -> { val g = killGold(d.stage) * 800; addGold(g); "+${fmt(g)} gold" }
+            "relic_pack" -> { val r = max(5L, relicsFor(max(d.maxStage, PRESTIGE_STAGE)) / 4); d.relics += r; "+${fmt(r)} relics" }
+            "warp" -> { repeat(10) { advanceStage() }; monster = null; "Warped to stage ${d.stage}" }
+            "respec" -> { d.skillTree.clear(); "Skill points refunded" }
+            "eggs5" -> { grantRandomEggs(5); "+5 pet eggs" }
+            "eggs20" -> { grantRandomEggs(20); "+20 pet eggs" }
+            else -> if (item.kind == "boost") { d.buffs[id] = item.duration; "${item.name} active!" } else "${item.name} unlocked!"
         }
+        when (item.kind) {
+            "perm" -> d.owned += id
+            "level" -> d.shopLevels[id] = shopLevel(id) + 1
+        }
+        return msg
+    }
+
+    fun buySkin(id: String): Boolean {
+        val skin = skinDef(id) ?: return false
+        if (id in d.skins) { d.skin = if (d.skin == id) null else id; return true } // toggle wearing it
+        if (d.gems < skin.gems) return false
+        d.gems -= skin.gems
+        d.skins += id
+        d.skin = id
         return true
     }
+
+    private fun grantRandomEggs(n: Int) = repeat(n) { grantEggs(PETS.random().id, 1) }
 
     // ---------------------------------------------------------- equipment & chests
     private fun rollGear(odds: DoubleArray): Gear {
@@ -348,16 +431,17 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         val c = CHESTS.first { it.id == id }
         if (d.gems < c.gems) return null
         d.gems -= c.gems
-        return (0 until c.items).map { i ->
-            grantGear(rollGear(if (id == "titan" && i == 0) doubleArrayOf(0.0, 0.0, 0.75, 0.25) else c.odds))
-        }
+        return openChestFree(c)
+    }
+
+    private fun openChestFree(c: Chest): List<GearRoll> = (0 until c.items).map { i ->
+        grantGear(rollGear(if (c.id == "titan" && i == 0) doubleArrayOf(0.0, 0.0, 0.75, 0.25) else c.odds))
     }
 
     fun freeChestReady() = System.currentTimeMillis() >= d.freeChestAt
     fun openFreeChest(): List<GearRoll>? {
         if (!freeChestReady()) return null
         d.freeChestAt = System.currentTimeMillis() + FREE_CHEST_MS
-        d.gems += 5
         return listOf(grantGear(rollGear(CHESTS[0].odds)))
     }
 
@@ -438,6 +522,18 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             it.activePet = old.activePet
             it.freeChestAt = old.freeChestAt
             it.deals = old.deals
+            it.screenZoom = old.screenZoom
+            it.cursorSpeed = old.cursorSpeed
+            it.returnTo = old.returnTo
+            it.returnMode = old.returnMode
+            it.skillTree = old.skillTree
+            it.bonusSp = old.bonusSp
+            it.owned = old.owned
+            it.shopLevels = old.shopLevels
+            it.skins = old.skins
+            it.skin = old.skin
+            it.login = old.login
+            it.quests = old.quests
         }
         d.stats.prestiges++
         d.stats.relicsEarned += gained
@@ -454,11 +550,76 @@ class Game(var d: PlayerData, private val events: GameEvents) {
                 val id = "${g.key}_$i"
                 if (id !in d.achievements && value >= target) {
                     d.achievements += id
-                    d.gems += g.gems[i]
-                    events.onAchievement(g, target, g.gems[i])
+                    val gems = achievementGems(g, i)
+                    addGold(achievementGold(i))
+                    d.gems += gems
+                    events.onAchievement(g, target, gems)
                 }
             }
         }
+    }
+
+    /** Gems are paid, so only the final tier of each achievement gives a few. */
+    fun achievementGems(g: AchGroup, tier: Int) = if (tier == g.tiers.lastIndex) 5 else 0
+    fun achievementGold(tier: Int) = killGold(d.stage) * 15 * (tier + 1)
+
+    // ---------------------------------------------------------- daily login & quests
+    private fun today() = System.currentTimeMillis() / 86_400_000L
+
+    fun loginReady() = d.login.lastClaimDay != today()
+    fun loginDay() = if (d.login.lastClaimDay >= today() - 1) (d.login.streak % 7) else 0 // index of the next reward
+
+    fun claimLogin(): String? {
+        val day = today()
+        if (d.login.lastClaimDay == day) return null
+        d.login.streak = if (d.login.lastClaimDay == day - 1) d.login.streak + 1 else 1
+        d.login.lastClaimDay = day
+        return when ((d.login.streak - 1) % 7) {
+            0 -> { val g = killGold(d.stage) * 50; addGold(g); "+${fmt(g)} gold" }
+            1 -> { grantRandomEggs(2); "+2 pet eggs" }
+            2 -> { val g = killGold(d.stage) * 100; addGold(g); "+${fmt(g)} gold" }
+            3 -> { val r = grantGear(rollGear(CHESTS[0].odds)); "Got ${r.gear.name}" }
+            4 -> { grantRandomEggs(4); "+4 pet eggs" }
+            5 -> { val g = killGold(d.stage) * 250; addGold(g); "+${fmt(g)} gold" }
+            else -> { d.gems += 5; "+5 gems" }
+        }
+    }
+
+    fun quests(): QuestData {
+        val day = today()
+        if (d.quests.day != day) {
+            val r = Random(day * 31 + d.name.hashCode())
+            d.quests = QuestData().apply {
+                this.day = day
+                for (q in QUEST_POOL.shuffled(r).take(3)) list += Quest().apply {
+                    id = q.id; target = q.target(d.stats.bestStage); start = q.stat(d)
+                }
+            }
+        }
+        return d.quests
+    }
+
+    fun questDef(q: Quest) = QUEST_POOL.first { it.id == q.id }
+    fun questProgress(q: Quest) = (questDef(q).stat(d) - q.start).coerceIn(0, q.target.toLong())
+
+    fun claimQuest(i: Int): String? {
+        val q = quests().list.getOrNull(i) ?: return null
+        if (q.claimed || questProgress(q) < q.target) return null
+        q.claimed = true
+        d.stats.questsDone++
+        return when (i) {
+            0 -> { val g = killGold(d.stage) * 120; addGold(g); "+${fmt(g)} gold" }
+            1 -> { grantRandomEggs(3); "+3 pet eggs" }
+            else -> { val r = max(2L, d.maxStage / 20L); d.relics += r; "+$r relics" }
+        }
+    }
+
+    fun questBonusReady() = quests().list.all { it.claimed } && !d.quests.bonusClaimed
+    fun claimQuestBonus(): String? {
+        if (!questBonusReady()) return null
+        d.quests.bonusClaimed = true
+        d.gems += 2
+        return "+2 gems"
     }
 
     // ---------------------------------------------------------- wisps
@@ -466,7 +627,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         d.stats.wisps++
         val r = Random.nextDouble()
         return when {
-            r < 0.15 -> { val n = Random.nextInt(3, 8); d.gems += n; "+$n gems" }
+            r < 0.15 -> { grantRandomEggs(1); "+1 pet egg" }
             r < 0.35 -> { d.mana = maxMana().toDouble(); "Mana refilled" }
             else -> { val g = killGold(d.stage) * 25; addGold(g); "+${fmt(g)} gold" }
         }
@@ -474,7 +635,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
 
     // ---------------------------------------------------------- time away
     fun applyOffline(secondsAway: Double, maxHours: Double): Double {
-        val secs = min(secondsAway, maxHours * 3600)
+        val secs = min(secondsAway, (if (owns("offline_master")) max(24.0, maxHours) else maxHours) * 3600)
         val it = d.buffs.entries.iterator()
         while (it.hasNext()) {
             val e = it.next()
@@ -485,7 +646,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         val dps = heroDps(false)
         if (dps <= 0 || secs < 30) return 0.0
         val kills = min(secs * dps / monsterHp(d.stage), secs * 2)
-        val g = kills * killGold(d.stage) * 0.6
+        val g = kills * killGold(d.stage) * (if (owns("offline_master")) 1.0 else 0.6) * (1 + 0.2 * art("coin")) * (1 + petBonus("offline"))
         addGold(g)
         return g
     }

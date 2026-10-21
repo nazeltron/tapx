@@ -15,6 +15,8 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
+import org.bukkit.configuration.file.YamlConfiguration
+import java.time.LocalDateTime
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
@@ -28,6 +30,9 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     private val sessions = ConcurrentHashMap<UUID, Session>()
     private val top = ConcurrentHashMap<UUID, TopEntry>()
     private lateinit var playersDir: File
+    /** Gems for players who weren't online and have no save yet (e.g. bought on the web store first). */
+    private val pendingGems = ConcurrentHashMap<String, Long>()
+    private lateinit var pendingFile: File
     lateinit var arcade: Arcade
         private set
 
@@ -44,6 +49,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     override fun onEnable() {
         saveDefaultConfig()
         playersDir = File(dataFolder, "players").apply { mkdirs() }
+        pendingFile = File(dataFolder, "pending-gems.yml")
+        YamlConfiguration.loadConfiguration(pendingFile).let { y -> y.getKeys(false).forEach { pendingGems[it] = y.getLong(it) } }
         Palette.toMap(0) // build the colour table now rather than on the first frame
         val n = AtomicInteger()
         gameThreads = Executors.newScheduledThreadPool(config.getInt("render-threads", 2).coerceIn(1, 8)) {
@@ -90,7 +97,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                 null
             }
         } else null
-        return (data ?: PlayerData().apply { gems = config.getLong("starting-gems", 100) }).also { it.name = p.name }
+        return (data ?: PlayerData().apply { gems = config.getLong("starting-gems", 25) }).also { it.name = p.name }
     }
 
     private fun loadSession(p: Player) {
@@ -136,6 +143,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         val p = e.player
         loadSession(p)
         val s = sessions[p.uniqueId] ?: return
+        deliverPendingGems(p, s)
         if (autoStart(p)) {
             // give the client a moment to finish loading the world, then straight into the game
             server.scheduler.runTaskLater(this, Runnable { if (p.isOnline) arcade.enter(p, s) }, 20L)
@@ -159,12 +167,12 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                 val s = sessions[p.uniqueId] ?: return true
                 if (arcade.isPlaying(p)) return reply(sender, "<gray>You're already playing! Sneak (shift) to leave.")
                 if (p.isDead) return true
-                reply(sender, "<gold>TapX</gold> <gray>- <white>left-click</white> to attack, <white>WASD</white> to move, <white>space</white> to select, <white>shift</white> to go back.")
+                reply(sender, "<gold>TapX</gold> <gray>- move your <white>mouse</white> to aim, <white>left-click</white> to attack and press buttons, <white>shift</white> to go back.")
                 arcade.enter(p, s)
             }
             "leave", "exit" -> {
                 val p = sender as? Player ?: return true
-                if (!config.getBoolean("allow-exit", false) && !p.hasPermission("tapx.admin")) return reply(sender, "<red>You can't leave the game on this server.")
+                if (!p.hasPermission("tapx.admin")) return reply(sender, "<red>Only operators can leave the game.")
                 arcade.leave(p)
             }
             "top" -> {
@@ -172,6 +180,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                 leaderboard().take(10).forEachIndexed { i, e -> reply(sender, "<yellow>#${i + 1} <white>${e.name} <gray>- stage ${e.best}, ${e.prestiges} prestiges") }
             }
             "admin" -> admin(sender, args.drop(1))
+            "gems" -> gems(sender, args.drop(1))
             else -> help(sender)
         }
         return true
@@ -180,12 +189,13 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     private fun help(sender: CommandSender) {
         reply(sender, "<gold><b>TapX</b> <gray>v$version - a Tap Titans-style idle game")
         reply(sender, "<yellow>/tapx <gray>- open the game screen")
-        reply(sender, "<yellow>/tapx leave <gray>- leave the game screen (if allowed)")
+        if (sender.hasPermission("tapx.admin")) reply(sender, "<yellow>/tapx leave <gray>- leave the game screen (ops only)")
         reply(sender, "<yellow>/tapx top <gray>- top players")
         if (sender.hasPermission("tapx.admin")) {
             reply(sender, "<yellow>/tapx admin give <player> <gold|gems|relics> <amount>")
             reply(sender, "<yellow>/tapx admin stage <player> <stage>")
             reply(sender, "<yellow>/tapx admin reset <player>")
+            reply(sender, "<yellow>/tapx gems <give|take|set|check> <player> [amount] <gray>- works offline too (for store purchases)")
         }
     }
 
@@ -201,13 +211,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                 if (amount == null || amount <= 0 || what !in setOf("gold", "gems", "relics")) {
                     reply(sender, "<red>Usage: /tapx admin give <player> <gold|gems|relics> <amount>"); return
                 }
-                s.post {
-                    when (what) {
-                        "gold" -> s.game.addGold(amount)
-                        "gems" -> s.d.gems += amount.toLong()
-                        else -> s.d.relics += amount.toLong()
-                    }
-                }
+                if (what == "gems") { gems(sender, listOf("give", target.name, amount.toLong().toString())); return }
+                s.post { if (what == "gold") s.game.addGold(amount) else s.d.relics += amount.toLong() }
                 reply(sender, "<green>Gave ${fmt(amount)} $what to ${target.name}.")
             }
             "stage" -> {
@@ -230,6 +235,91 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         }
     }
 
+    // ---------------------------------------------------------- gems (paid currency)
+    /**
+     * /tapx gems <give|take|set|check> <player> [amount]
+     * Meant for the web store (e.g. PayNow runs "tapx gems give {username} 500" from the console).
+     * Works for online players, offline players with a save, and players who never joined yet (queued).
+     */
+    private fun gems(sender: CommandSender, args: List<String>) {
+        if (!sender.hasPermission("tapx.admin")) { reply(sender, "<red>You don't have permission."); return }
+        val action = args.getOrNull(0)?.lowercase()
+        val name = args.getOrNull(1)
+        val amount = args.getOrNull(2)?.toLongOrNull()
+        if (action !in setOf("give", "take", "set", "check") || name == null || (action != "check" && (amount == null || amount < 0))) {
+            reply(sender, "<red>Usage: /tapx gems <give|take|set|check> <player> [amount]"); return
+        }
+        fun apply(d: PlayerData): Long {
+            when (action) {
+                "give" -> { d.gems += amount!!; d.stats.gemsBought += amount }
+                "take" -> d.gems = maxOf(0, d.gems - amount!!)
+                "set" -> d.gems = amount!!
+            }
+            return d.gems
+        }
+        if (action != "check") logGems("${sender.name} $action $name ${amount ?: ""}")
+        // 1) online
+        val online = Bukkit.getPlayerExact(name)
+        val s = online?.let { sessions[it.uniqueId] }
+        if (online != null && s != null) {
+            s.post {
+                val total = apply(s.d)
+                if (action == "give") s.screen.gemsReceived(amount!!)
+                server.scheduler.runTask(this, Runnable {
+                    reply(sender, "<green>${online.name} now has ${fmt(total)} gems.")
+                    if (action == "give") reply(online, "<aqua>You received <b>${fmt(amount!!)} gems</b>! Thank you for supporting the server.")
+                })
+            }
+            save(s)
+            return
+        }
+        // 2) offline with a save file
+        val uuid = Bukkit.getOfflinePlayerIfCached(name)?.uniqueId ?: findUuidByName(name)
+        val f = uuid?.let(::file)
+        if (f != null && f.exists()) {
+            writer.execute {
+                val d = gson.fromJson(f.readText(), PlayerData::class.java)
+                val total = apply(d)
+                writeNow(uuid, gson.toJson(d))
+                server.scheduler.runTask(this, Runnable { reply(sender, "<green>$name (offline) now has ${fmt(total)} gems.") })
+            }
+            return
+        }
+        // 3) never joined: queue gifts for their first join
+        when (action) {
+            "give" -> {
+                pendingGems.merge(name.lowercase(), amount!!, Long::plus)
+                savePending()
+                reply(sender, "<yellow>$name hasn't joined yet. ${fmt(amount)} gems will be delivered on their first join.")
+            }
+            "check" -> reply(sender, "<gray>$name has no TapX save yet${pendingGems[name.lowercase()]?.let { " (${fmt(it)} gems waiting)" } ?: ""}.")
+            else -> reply(sender, "<red>$name has no TapX save yet.")
+        }
+    }
+
+    private fun findUuidByName(name: String): UUID? =
+        top.values.firstOrNull { it.name.equals(name, ignoreCase = true) }?.uuid
+
+    private fun deliverPendingGems(p: Player, s: Session) {
+        val n = pendingGems.remove(p.name.lowercase()) ?: return
+        savePending()
+        s.d.gems += n
+        s.d.stats.gemsBought += n
+        save(s)
+        reply(p, "<aqua>You received <b>${fmt(n)} gems</b>! Thank you for supporting the server.")
+    }
+
+    private fun savePending() {
+        val y = YamlConfiguration()
+        pendingGems.forEach { (k, v) -> y.set(k, v) }
+        writer.execute { y.save(pendingFile) }
+    }
+
+    private fun logGems(line: String) {
+        val f = File(dataFolder, "gems.log")
+        writer.execute { f.appendText("${LocalDateTime.now()} $line\n") }
+    }
+
     private fun reply(sender: CommandSender, text: String): Boolean {
         sender.sendMessage(mm(text))
         return true
@@ -237,10 +327,15 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> {
         val admin = sender.hasPermission("tapx.admin") && args[0].equals("admin", true)
+        val gemsCmd = sender.hasPermission("tapx.admin") && args[0].equals("gems", true)
         val opts = when (args.size) {
-            1 -> listOf("play", "leave", "top", "help") + if (sender.hasPermission("tapx.admin")) listOf("admin") else emptyList()
-            2 -> if (admin) listOf("give", "stage", "reset") else emptyList()
-            3 -> if (admin) Bukkit.getOnlinePlayers().map { it.name } else emptyList()
+            1 -> listOf("play", "top", "help") + if (sender.hasPermission("tapx.admin")) listOf("leave", "admin", "gems") else emptyList()
+            2 -> when {
+                admin -> listOf("give", "stage", "reset")
+                gemsCmd -> listOf("give", "take", "set", "check")
+                else -> emptyList()
+            }
+            3 -> if (admin || gemsCmd) Bukkit.getOnlinePlayers().map { it.name } else emptyList()
             4 -> if (admin && args[1].equals("give", true)) listOf("gold", "gems", "relics") else emptyList()
             else -> emptyList()
         }

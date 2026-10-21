@@ -24,6 +24,8 @@ val WORLDS = listOf(
     World("Gloomwood", "forest", "#262a52" to "#6c5b8f", "#3d3a68", "#26284a", "#191a33", "#3b4a3b", "#56705a", "#211c1b"),
     World("Ember Depths", "lava", "#2a0a0a" to "#912e12", "#4c1812", "#2c100c", "#190807", "#3a1c15", "#5c2d1e", "#160807"),
     World("Crystal Void", "void", "#0c0a29" to "#3d1e72", "#2c2463", "#5c40b4", "#3a2780", "#2a2152", "#4a3a8c", "#110c26"),
+    World("Coral Deep", "ocean", "#0a3a6a" to "#2a8ac0", "#1a5a8a", "#e06a8a", "#b0406a", "#d8c890", "#f0e4b0", "#8a7a50"),
+    World("Sky Citadel", "sky", "#5ab0ff" to "#fff0d8", "#d8e8ff", "#ffffff", "#c8d8f0", "#8ad06a", "#b0f08a", "#7a5a3a"),
 )
 
 fun worldFor(stage: Int) = WORLDS[((stage - 1) / 10) % WORLDS.size]
@@ -55,6 +57,10 @@ val HEROES = listOf(
     Hero("vale", "Vale the Valkyrie", 3e11, 1.05e9, Look("#f4d0b0", "#f6f0d8", "long", "#6fb0e6", "#ffe08a", "#3d5a80", "spear", cape = "#ffffff")),
     Hero("wyrm", "Wyrmcaller", 4e12, 9e9, Look("#d9a77c", "#c93a2a", "spiky", "#8a2a1f", "#f2b134", "#3a1f1a", "scythe", cape = "#f2b134")),
     Hero("void", "Oracle of the Void", 5.5e13, 8e10, Look("#b9a8e6", "#2a1a4a", "hood", "#5a3aa8", "#7ef0ff", "#24164a", "staff", hood = "#3a1f6e", glow = "#7ef0ff")),
+    Hero("sly", "Sly the Ninja", 7e14, 6.5e11, Look("#f0c8a0", "#111111", "hood", "#2a2a2a", "#d23a3a", "#1a1a1a", "dagger", hood = "#1a1a1a")),
+    Hero("bruna", "Bruna the Smith", 9e15, 5.5e12, Look("#d9a07a", "#a0522d", "bob", "#6b4a3a", "#c0c0c0", "#3a2a20", "mace")),
+    Hero("coral", "Captain Coral", 1.2e17, 4.5e13, Look("#e0b090", "#2a1a0a", "bandana", "#e8e0d0", "#2a6ab0", "#2a3a5a", "gun", band = "#2a6ab0", cape = "#2a6ab0")),
+    Hero("astra", "Astra the Star Mage", 1.6e18, 3.8e14, Look("#f6d8c0", "#ffd8f0", "wizard", "#5a4ac0", "#ffe34a", "#2a2060", "staff", hat = "#3a2a8a", glow = "#ff9af0")),
 )
 
 val HERO_LOOK = Look("#f6cba4", "#ffd23a", "spiky", "#2f3448", "#e8b33a", "#2a2a36", "sword", cape = "#d8302f")
@@ -101,14 +107,99 @@ fun skillDesc(id: String, level: Int): String {
     }
 }
 
-// ---------------------------------------------------------------- perks (gems)
-class Perk(val id: String, val name: String, val gems: Int, val duration: Double, val desc: String)
+// ---------------------------------------------------------------- gem shop (gems are the paid currency)
+/** Something bought with gems. [kind]: boost (timed), instant, perm (one-time), level (levelled), chest, eggs, skin. */
+class ShopItem(
+    val id: String, val section: String, val name: String, val desc: String, val gems: Int,
+    val icon: String, val kind: String, val duration: Double = 0.0, val maxLevel: Int = 1,
+)
 
-val PERKS = listOf(
-    Perk("surge", "Power Surge", 40, 600.0, "x2 ALL damage for 10 min"),
-    Perk("phantom", "Phantom Hand", 50, 600.0, "Auto-tap 6/sec for 10 min"),
-    Perk("shower", "Gold Shower", 30, 0.0, "Gold worth 60 kills"),
-    Perk("flask", "Mana Flask", 15, 0.0, "Refill your mana"),
+val SHOP_SECTIONS = listOf(
+    "offers" to "SPECIAL OFFERS",
+    "perm" to "PERMANENT UPGRADES",
+    "boost" to "BOOSTS",
+    "instant" to "INSTANT REWARDS",
+    "chest" to "CHESTS - FIND EQUIPMENT",
+    "eggs" to "PET EGGS",
+    "skin" to "HERO SKINS",
+)
+
+val SHOP_ITEMS = listOf(
+    ShopItem("starter", "offers", "Starter Pack", "Titan Chest + 10 eggs + 2 boosts (once)", 300, "chest_titan", "perm"),
+    ShopItem("vip_gold", "perm", "Royal Treasury", "x2 gold from everything, forever", 800, "midas", "perm"),
+    ShopItem("double_dmg", "perm", "Warrior's Blessing", "x2 ALL damage, forever", 1000, "blade", "perm"),
+    ShopItem("auto_tap", "perm", "Auto Tapper", "+1 automatic tap per second", 200, "phantom", "level", maxLevel = 10),
+    ShopItem("offline_master", "perm", "Offline Master", "Full offline gold, up to 24 hours", 500, "moon", "perm"),
+    ShopItem("mana_well", "perm", "Mana Well", "+25 max mana, forever", 300, "crystal", "perm"),
+    ShopItem("sp_pack", "perm", "Skill Book", "+3 skill points", 150, "tome", "level", maxLevel = 50),
+    ShopItem("surge", "boost", "Power Surge", "x2 ALL damage for 10 min", 40, "surge", "boost", 600.0),
+    ShopItem("golden_hour", "boost", "Golden Hour", "x3 gold for 30 min", 60, "clock", "boost", 1800.0),
+    ShopItem("phantom", "boost", "Phantom Hand", "Auto-tap 6/sec for 10 min", 50, "phantom", "boost", 600.0),
+    ShopItem("battle_frenzy", "boost", "Battle Frenzy", "x5 ALL damage for 5 min", 80, "berserk", "boost", 300.0),
+    ShopItem("rain", "boost", "Make It Rain", "Auto-levels your allies for 30 min", 100, "shower", "boost", 1800.0),
+    ShopItem("flask", "instant", "Mana Flask", "Refill your mana", 15, "flask", "instant"),
+    ShopItem("shower", "instant", "Gold Shower", "Gold worth 60 kills", 30, "midas", "instant"),
+    ShopItem("mountain", "instant", "Gold Mountain", "Gold worth 800 kills", 250, "shower", "instant"),
+    ShopItem("relic_pack", "instant", "Relic Bundle", "Relics worth a quarter prestige", 150, "relic", "instant"),
+    ShopItem("warp", "instant", "Warp Scroll", "Skip ahead 10 stages", 100, "boots", "instant"),
+    ShopItem("respec", "instant", "Forget Skills", "Refund all skill points", 50, "prestige", "instant"),
+    ShopItem("eggs5", "eggs", "Egg Basket", "5 random pet eggs", 100, "egg", "eggs"),
+    ShopItem("eggs20", "eggs", "Egg Crate", "20 random pet eggs", 350, "egg", "eggs"),
+)
+
+// ---------------------------------------------------------------- hero skins (gems)
+class Skin(val id: String, val name: String, val gems: Int, val apply: (Look) -> Look)
+
+val SKINS = listOf(
+    Skin("pirate", "Sea Rover", 250) { it.copy(hairStyle = "bandana", hair = "#3a2a1a", band = "#c0392b", outfit = "#2a4a6a", trim = "#e8c547", cape = "#1a1a1a") },
+    Skin("shadow", "Shadow Knight", 300) { it.copy(hair = "#1a1a2a", outfit = "#2a2a3a", trim = "#8a2aff", cape = "#4a1a6a", blade = "#c8a8ff", bladeGlow = "#8a2aff") },
+    Skin("frost", "Frost Warden", 300) { it.copy(hair = "#e0f4ff", outfit = "#3a7ab8", trim = "#bff1ff", cape = "#8ad8ff", blade = "#bff1ff", bladeGlow = "#5fd7ff") },
+    Skin("inferno", "Inferno Lord", 400) { it.copy(hair = "#ff5a2a", outfit = "#5a1a10", trim = "#ff9a2a", cape = "#ff5a2a", blade = "#ffb27a", bladeGlow = "#ff5a2a", aura = "#ff7a2a") },
+    Skin("golden", "Golden Champion", 500) { it.copy(hair = "#ffd23a", outfit = "#e8c040", trim = "#ffffff", cape = "#ffffff", blade = "#fff6a8", bladeGlow = "#ffe34a", aura = "#ffe34a") },
+    Skin("royal", "Royal Highness", 800) { it.copy(helmGear = "crown", helmColor = "#ffc21a", outfit = "#6a2a9a", trim = "#ffd23a", cape = "#c0392b", aura = "#ffffff") },
+)
+
+fun skinDef(id: String?) = SKINS.firstOrNull { it.id == id }
+
+// ---------------------------------------------------------------- skill tree (skill points)
+class TreeNode(val id: String, val branch: Int, val name: String, val max: Int, val desc: (Int) -> String)
+
+val TREE_BRANCHES = listOf("KNIGHT" to "e8643a", "WARLORD" to "3aa0b8", "SORCERER" to "8a5ad0", "ROGUE" to "58b04a")
+
+val SKILL_TREE = listOf(
+    TreeNode("k_edge", 0, "Sharp Edge", 10) { "+${it * 15}% tap damage" },
+    TreeNode("k_eye", 0, "Keen Eye", 10) { "+${"%.1f".format(it * 0.5)}% crit chance" },
+    TreeNode("k_heavy", 0, "Heavy Blows", 10) { "+${it * 25}% crit damage" },
+    TreeNode("k_bane", 0, "Titan Bane", 10) { "+${it * 10}% boss damage" },
+    TreeNode("w_rally", 1, "Rally", 10) { "+${it * 15}% ally DPS" },
+    TreeNode("w_bargain", 1, "Bargain", 10) { "-${it * 2}% ally costs" },
+    TreeNode("w_drill", 1, "Drill Sergeant", 10) { "+${"%.1f".format(it * 0.5)}% of ally DPS to taps" },
+    TreeNode("w_vets", 1, "Veterans", 10) { "+${it * 10}% ALL damage" },
+    TreeNode("s_deep", 2, "Deep Mana", 10) { "+${it * 5} max mana" },
+    TreeNode("s_flow", 2, "Mana Flow", 10) { "+${it * 10}% mana regen" },
+    TreeNode("s_long", 2, "Long Spells", 10) { "+${it * 3}s spell time" },
+    TreeNode("s_storm", 2, "Storm Caller", 10) { "+${it * 25}% Thunder damage" },
+    TreeNode("r_greed", 3, "Greed", 10) { "+${it * 10}% gold" },
+    TreeNode("r_mimic", 3, "Mimic Hunter", 10) { "+${"%.1f".format(it * 0.5)}% mimic chance" },
+    TreeNode("r_loot", 3, "Boss Loot", 10) { "+${it * 25}% boss gold" },
+    TreeNode("r_warp", 3, "Warp Step", 10) { "+$it% stage skip" },
+)
+
+// ---------------------------------------------------------------- daily login & quests
+/** 7-day login calendar; day 7 gives a few gems. */
+val LOGIN_REWARDS = listOf("Gold x50 kills", "2 pet eggs", "Gold x100 kills", "Free gear", "4 pet eggs", "Gold x250 kills", "5 gems")
+
+class QuestDef(val id: String, val text: (Int) -> String, val target: (Int) -> Int, val stat: (PlayerData) -> Long)
+
+val QUEST_POOL = listOf(
+    QuestDef("taps", { "Tap $it times" }, { 300 + it * 2 }, { it.stats.taps }),
+    QuestDef("kills", { "Defeat $it monsters" }, { 100 + it / 2 }, { it.stats.kills }),
+    QuestDef("bosses", { "Defeat $it bosses" }, { 5 }, { it.stats.bosses }),
+    QuestDef("casts", { "Cast $it spells" }, { 5 }, { it.stats.casts }),
+    QuestDef("crits", { "Land $it critical hits" }, { 25 }, { it.stats.crits }),
+    QuestDef("stages", { "Clear $it stages" }, { 10 }, { it.stats.stagesCleared }),
+    QuestDef("upgrades", { "Buy $it upgrades" }, { 25 }, { it.stats.upgrades }),
+    QuestDef("wisps", { "Catch $it wisp" }, { 1 }, { it.stats.wisps }),
 )
 
 // ---------------------------------------------------------------- artifacts (relics)
@@ -127,6 +218,12 @@ val ARTIFACTS = listOf(
     Artifact("boots", "Warp Boots", 5, 20) { "${it * 2}% stage skip" },
     Artifact("crown", "Tyrant Crown", 5, 15) { "-${it * 4}% boss HP" },
     Artifact("key", "Lucky Key", 4, 15) { "+$it% mimic chance" },
+    Artifact("coin", "Ancient Coin", 3, 10) { "+${it * 20}% offline gold" },
+    Artifact("collar", "Pet Collar", 3, 0) { "+${it * 30}% pet damage" },
+    Artifact("totem", "Storm Totem", 3, 0) { "+${it * 40}% Thunder damage" },
+    Artifact("lantern", "Spirit Lantern", 3, 10) { "+${it * 8}% wisp sightings" },
+    Artifact("map", "Treasure Map", 3, 0) { "+${it * 50}% mimic gold" },
+    Artifact("slayer", "Giant Slayer", 4, 0) { "+${it * 10}% boss damage" },
 )
 
 // ---------------------------------------------------------------- equipment
@@ -194,6 +291,8 @@ val PETS = listOf(
     Pet("soot", "Soot", "crit", "crit damage", 0.25, "#3fbf4a", "#f2d24a", "#2a8f34", "horns"),
     Pet("hamy", "Hamy", "mana", "mana regen", 0.08, "#c9372c", "#ffe6c8", "#ffffff", "fox", bow = true),
     Pet("gloop", "Gloop", "boss", "boss damage", 0.2, "#b06cff", "#e8d0ff", "#7a3ad0", "none"),
+    Pet("sparky", "Sparky", "thunder", "Thunder damage", 0.3, "#ffe34a", "#fff8c0", "#4a8aff", "horns", fuzzy = true),
+    Pet("bramble", "Bramble", "offline", "offline gold", 0.2, "#8a6a3a", "#e8d8b0", "#5a9a3a", "fox", sleepy = true),
 )
 
 fun petDef(id: String?) = PETS.firstOrNull { it.id == id }
@@ -203,9 +302,10 @@ fun petEggsForLevel(level: Int) = level * 2
 class Chest(val id: String, val name: String, val gems: Int, val items: Int, val odds: DoubleArray, val body: String, val band: String)
 
 val CHESTS = listOf(
-    Chest("wood", "Wooden Chest", 120, 2, doubleArrayOf(0.75, 0.21, 0.035, 0.005), "#c98a3a", "#7d7d86"),
-    Chest("silver", "Silver Chest", 300, 3, doubleArrayOf(0.45, 0.4, 0.13, 0.02), "#2f6fd0", "#d8dde5"),
-    Chest("titan", "Titan Chest", 900, 5, doubleArrayOf(0.2, 0.42, 0.28, 0.1), "#f2b81e", "#b5781a"),
+    Chest("wood", "Wooden Chest", 60, 2, doubleArrayOf(0.75, 0.21, 0.035, 0.005), "#c98a3a", "#7d7d86"),
+    Chest("silver", "Silver Chest", 150, 3, doubleArrayOf(0.45, 0.4, 0.13, 0.02), "#2f6fd0", "#d8dde5"),
+    Chest("titan", "Titan Chest", 450, 5, doubleArrayOf(0.2, 0.42, 0.28, 0.1), "#f2b81e", "#b5781a"),
+    Chest("legend", "Legendary Chest", 1200, 5, doubleArrayOf(0.0, 0.0, 0.6, 0.4), "#7a2ad0", "#ffd23a"),
 )
 
 // ---------------------------------------------------------------- achievements

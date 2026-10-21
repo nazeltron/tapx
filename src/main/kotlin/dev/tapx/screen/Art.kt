@@ -10,6 +10,7 @@ import java.awt.Color
 import java.awt.GradientPaint
 import java.awt.Graphics2D
 import java.awt.RadialGradientPaint
+import java.awt.geom.Rectangle2D
 import java.awt.image.BufferedImage
 import kotlin.math.PI
 import kotlin.math.abs
@@ -219,12 +220,12 @@ object Art {
         val color: Color, val dark: Color, val light: Color, val belly: Color, val accent: Color,
         val eyes: Int, val eyeR: Double, val mouth: String, val horns: String?, val spikes: Boolean,
         val arms: Boolean, val legs: Boolean, val belly2: Boolean, val spots: Boolean, val float: Boolean,
-        val boss: Boolean, val mimic: Boolean, val spotSeed: Int,
+        val boss: Boolean, val mimic: Boolean, val spotSeed: Int, val lord: Boolean = false,
     )
 
     private val SHAPES = listOf("blob", "tower", "cone", "orb", "brute", "slime")
 
-    fun genMonster(seed: Long, boss: Boolean, mimic: Boolean): MonsterSpec {
+    fun genMonster(seed: Long, boss: Boolean, mimic: Boolean, lord: Boolean = false): MonsterSpec {
         val r = Random(seed)
         fun <T> pick(l: List<T>) = l[r.nextInt(l.size)]
         val shape = pick(SHAPES)
@@ -242,7 +243,7 @@ object Art {
             shape != "orb" && r.nextDouble() < 0.35,
             shape != "slime" && shape != "orb" && r.nextDouble() < 0.6,
             shape != "orb" && shape != "slime" && r.nextDouble() < 0.55,
-            r.nextDouble() < 0.5, r.nextDouble() < 0.35, shape == "orb", boss, mimic, r.nextInt(1_000_000),
+            r.nextDouble() < 0.5, r.nextDouble() < 0.35, shape == "orb", boss, mimic, r.nextInt(1_000_000), lord,
         )
     }
 
@@ -285,12 +286,12 @@ object Art {
     }
 
     /** Total drawn height above the ground, for HUD placement. */
-    fun monsterHeight(sp: MonsterSpec) = if (sp.mimic) 120.0 else sp.h * (if (sp.boss) 1.22 else 1.0) + (if (sp.legs) 16 else 0) + (if (sp.float) 24 else 0)
+    fun monsterHeight(sp: MonsterSpec) = if (sp.mimic) 120.0 else sp.h * (if (sp.lord) 1.4 else if (sp.boss) 1.22 else 1.0) + (if (sp.legs) 16 else 0) + (if (sp.float) 24 else 0)
 
     fun drawMonster(g: Graphics2D, sp: MonsterSpec, x: Double, gy: Double, t: Double, hitT: Double, deathT: Double, age: Double, scaleAll: Double) {
         val spawn = clamp(age * 4, 0.0, 1.0)
         if (sp.mimic) return drawMimic(g, x, gy, t, hitT, deathT, spawn, scaleAll)
-        val scale = (if (sp.boss) 1.22 else 1.0) * (1 - deathT * 0.6) * (0.4 + 0.6 * spawn) * scaleAll
+        val scale = (if (sp.lord) 1.4 else if (sp.boss) 1.22 else 1.0) * (1 - deathT * 0.6) * (0.4 + 0.6 * spawn) * scaleAll
         val breathe = sin(t * 2.4 + sp.hue) * 0.03
         val sq = hitT * 0.09
         val legH = if (sp.legs) 16.0 else 0.0
@@ -305,7 +306,8 @@ object Art {
             val w = sp.w; val h = sp.h; val fy = -faceY(sp)
             if (sp.boss) save {
                 alpha((0.3 + sin(t * 4) * 0.1) * (1 - deathT))
-                paint = RadialGradientPaint(0f, (-h / 2).toFloat(), w.toFloat(), floatArrayOf(0f, 1f), arrayOf(hex("ff3a3a"), Color(255, 0, 0, 0)))
+                val auraC = if (sp.lord) hex("b03aff") else hex("ff3a3a")
+                paint = RadialGradientPaint(0f, (-h / 2).toFloat(), w.toFloat(), floatArrayOf(0f, 1f), arrayOf(auraC, Color(auraC.red, auraC.green, auraC.blue, 0)))
                 fill(circle(0.0, -h / 2, w))
             }
             if (sp.legs) {
@@ -547,6 +549,31 @@ object Art {
                     g.draw(path { moveTo(rx - rw * 0.3, gy - rh * 0.8); lineTo(rx - rw * 0.1, gy - rh * 0.5); lineTo(rx - rw * 0.3, gy - rh * 0.25) })
                 }
             }
+            "ocean" -> {
+                repeat(14) {
+                    val kx = r.nextDouble() * w; val kh = 60 + r.nextDouble() * 120
+                    val kelp = path { moveTo(kx, gy); var y = gy; var x = kx; while (y > gy - kh) { y -= 12; x += sin(y / 15) * 4; lineTo(x, y) } }
+                    g.stroke = stroke(5f); g.color = hex("2a8a5a"); g.draw(kelp)
+                }
+                repeat(6) {
+                    val cx = r.nextDouble() * w; val cs = 18 + r.nextDouble() * 22
+                    for (k in 0 until 5) g.fill(circle(cx + (k - 2) * cs * 0.35, gy - cs * 0.5 - abs(k - 2) * -cs * 0.15, cs * 0.35), if (k % 2 == 0) mid else md)
+                }
+                repeat(20) { g.fill(circle(r.nextDouble() * w, r.nextDouble() * gy * 0.8, 1.5 + r.nextDouble() * 2), Color(255, 255, 255, 90)) }
+            }
+            "sky" -> {
+                repeat(5) {
+                    val ix = r.nextDouble() * w; val iy = horizon - r.nextDouble() * 120; val iw = 50 + r.nextDouble() * 50
+                    g.fill(path { moveTo(ix - iw, iy); lineTo(ix + iw, iy); lineTo(ix + iw * 0.3, iy + iw * 0.7); lineTo(ix - iw * 0.4, iy + iw * 0.5); closePath() }, hex("8a6a4a"))
+                    g.fill(Rectangle2D.Double(ix - iw, iy - 6, iw * 2, 8.0), hex(world.groundTop))
+                    g.fill(Rectangle2D.Double(ix - 8, iy - 40, 16.0, 34.0), md); g.fill(path { moveTo(ix - 12, iy - 40); lineTo(ix, iy - 56); lineTo(ix + 12, iy - 40); closePath() }, hex("5a8ad0"))
+                }
+                for (k in 0 until 3) g.fill(path {
+                    moveTo(0.0, gy); var x = 0.0
+                    while (x <= w) { lineTo(x, gy - 30 - k * 14 + sin(x / 40 + k) * 10); x += 8 }
+                    lineTo(w.toDouble(), gy); closePath()
+                }, Color(255, 255, 255, 200 - k * 40))
+            }
             else -> { // void
                 repeat(10) {
                     val cx = r.nextDouble() * w; val cy = horizon - r.nextDouble() * horizon * 0.6; val cs = 8 + r.nextDouble() * 22
@@ -572,7 +599,11 @@ object Art {
 
     /** Animated bits over the background (clouds, snow, embers, fireflies). */
     fun ambience(g: Graphics2D, world: World, w: Int, gy: Double, t: Double) {
-        if (world.kind in setOf("castle", "dunes", "peaks")) for (i in 0 until 3) {
+        if (world.kind == "ocean") for (i in 0 until 12) {
+            val x = (i * 79 + sin(t + i) * 10) % w; val y = gy - ((t * (18 + (i % 5) * 6) + i * 50) % gy)
+            g.stroke = stroke(1.5f); g.color = Color(220, 240, 255); g.draw(circle(x, y, 2.0 + (i % 3)))
+        }
+        if (world.kind in setOf("castle", "dunes", "peaks", "sky")) for (i in 0 until 3) {
             val x = ((t * (6 + i * 3) + i * 170) % (w + 160)) - 80; val y = 34.0 + i * 24
             g.fill(ellipse(x, y, 30.0, 9.0), WHITE); g.fill(ellipse(x + 18, y - 6, 18.0, 9.0), WHITE); g.fill(ellipse(x - 16, y - 3, 14.0, 7.0), WHITE)
         }
@@ -624,6 +655,12 @@ object Art {
         fill(java.awt.geom.Rectangle2D.Double(-1.5, -6.0, 3.0, 5.0), OUT)
     }
 
+    fun egg(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
+        translate(x, y)
+        fillStroke(path { moveTo(0.0, -r * 1.25); curveTo(r * 0.95, -r * 1.2, r * 1.05, r * 0.9, 0.0, r); curveTo(-r * 1.05, r * 0.9, -r * 0.95, -r * 1.2, 0.0, -r * 1.25) }, hex("fff4e0"), max(1f, (r * 0.13).toFloat()))
+        fill(circle(-r * 0.35, -r * 0.2, r * 0.22), hex("6ad0a0")); fill(circle(r * 0.3, r * 0.35, r * 0.18), hex("ff9a6a")); fill(circle(r * 0.25, -r * 0.6, r * 0.14), hex("6aa0ff"))
+    }
+
     fun wisp(g: Graphics2D, x: Double, y: Double, t: Double) = g.save {
         translate(x, y)
         alpha(0.35); fill(circle(0.0, 0.0, 24.0), hex("a0fff0"))
@@ -650,7 +687,7 @@ object Art {
         "banner" to ("9a2a2a" to "ff8a6a"), "idol" to ("a88a1a" to "ffe680"), "clover" to ("2a8a3a" to "a8f08a"), "fang" to ("6a2a8a" to "e0a8ff"),
         "hourglass" to ("6a5a3a" to "f0dca0"), "crystal" to ("2a5ab0" to "8ad8ff"), "tome" to ("5a2a8a" to "d0a0ff"), "boots" to ("3a5a2a" to "b0e08a"),
         "crown" to ("8a1a3a" to "ffb0c0"), "key" to ("8a6a1a" to "ffe08a"), "prestige" to ("2a3a8a" to "d8e8ff"), "tap" to ("c0402a" to "ffc080"),
-        "trophy" to ("a87a10" to "ffe07a"), "top" to ("2a6a8a" to "a0e0ff"), "gear" to ("4a4e5e" to "a0a4b4"), "exit" to ("8a1a1a" to "ff6a5a"),
+        "trophy" to ("a87a10" to "ffe07a"), "moon" to ("1a1a4a" to "5a5aa0"), "clock" to ("8a5a1a" to "ffd08a"), "quest" to ("2a4a8a" to "8ab0ff"), "top" to ("2a6a8a" to "a0e0ff"), "gear" to ("4a4e5e" to "a0a4b4"), "exit" to ("8a1a1a" to "ff6a5a"),
     )
 
     /** A square icon with a coloured tile background, drawn at (x, y) with size [s]. */
@@ -757,6 +794,23 @@ object Art {
             "gear" -> {
                 fillStroke(path { for (i in 0..16) { val a = i / 16.0 * TAU; val r = if (i % 2 == 1) 15.0 else 22.0; if (i == 0) moveTo(cos(a) * r, sin(a) * r) else lineTo(cos(a) * r, sin(a) * r) }; closePath() }, hex("c8ccd6"), 3f)
                 fillStroke(circle(0.0, 0.0, 7.0), hex("5a5e6e"), 3f)
+            }
+            "moon" -> {
+                fill(path { arcTo(0.0, 0.0, 22.0, 22.0, PI * 0.35, PI * 1.65, start = true); arcTo(10.0, -2.0, 18.0, 18.0, PI * 1.55, PI * 0.45); closePath() }, hex("fff0a8"))
+                for ((sx, sy) in listOf(14.0 to -18.0, 20.0 to 4.0, 8.0 to 18.0)) fill(circle(sx, sy, 2.0), Color.WHITE)
+            }
+            "clock" -> {
+                fillStroke(circle(0.0, 0.0, 22.0), hex("fff4e0"), 3f)
+                line(0.0, 0.0, 0.0, -14.0, OUT, 3.5f); line(0.0, 0.0, 10.0, 6.0, OUT, 3.5f)
+                fill(circle(0.0, 0.0, 3.0), hex("c0392b"))
+            }
+            "quest" -> {
+                fillStroke(rrect(-18.0, -24.0, 36.0, 48.0, 4.0), hex("f2e8d0"), 3f)
+                for (i in 0 until 3) {
+                    fillStroke(rrect(-12.0, -14.0 + i * 13, 8.0, 8.0, 1.5), Color.WHITE, 2f)
+                    line(-1.0, -10.0 + i * 13, 12.0, -10.0 + i * 13, hex("8a7a6a"), 2.5f)
+                }
+                line(-11.0, -10.0, -8.0, -7.0, hex("2a9a3a"), 2.5f); line(-8.0, -7.0, -3.0, -15.0, hex("2a9a3a"), 2.5f)
             }
             "exit" -> {
                 line(-12.0, -12.0, 12.0, 12.0, WHITE, 7f); line(12.0, -12.0, -12.0, 12.0, WHITE, 7f)

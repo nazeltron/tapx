@@ -4,7 +4,7 @@ package dev.tapx
 class PlayerData {
     var name = ""
     var gold = 0.0
-    var gems = 100L
+    var gems = 25L
     var relics = 0L
     var stage = 1
     var wave = 0
@@ -35,6 +35,38 @@ class PlayerData {
     var returnMode: String? = null
     /** Per-player screen size (camera distance factor); 0 = not set up yet. */
     var screenZoom = 0.0
+    /** Cursor speed multiplier (mouse sensitivity inside the game). */
+    var cursorSpeed = 1.0
+
+    // --- added in 2.2
+    var skillTree = mutableMapOf<String, Int>()
+    var bonusSp = 0
+    /** One-time gem purchases (vip_gold, double_dmg, offline_master, mana_well, starter). */
+    var owned = mutableSetOf<String>()
+    /** Levelled gem purchases (auto_tap, sp_pack). */
+    var shopLevels = mutableMapOf<String, Int>()
+    var skins = mutableSetOf<String>()
+    var skin: String? = null
+    var login = LoginData()
+    var quests = QuestData()
+}
+
+class LoginData {
+    var streak = 0
+    var lastClaimDay = -1L
+}
+
+class Quest {
+    var id = ""
+    var target = 0
+    var start = 0L
+    var claimed = false
+}
+
+class QuestData {
+    var day = -1L
+    var list = mutableListOf<Quest>()
+    var bonusClaimed = false
 }
 
 class Stats {
@@ -49,6 +81,10 @@ class Stats {
     var bestStage = 1
     var relicsEarned = 0L
     var wisps = 0L
+    var stagesCleared = 0L
+    var upgrades = 0L
+    var questsDone = 0L
+    var gemsBought = 0L
 }
 
 class PetData {
