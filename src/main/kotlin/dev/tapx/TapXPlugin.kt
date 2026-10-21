@@ -57,7 +57,6 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         getCommand("tapx")?.setExecutor(this)
         getCommand("tapx")?.tabCompleter = this
         server.onlinePlayers.forEach(::loadSession)
-        server.scheduler.runTaskTimer(this, Runnable { arcade.updateCursors() }, 1L, 1L)
         val every = config.getLong("autosave-minutes", 5).coerceAtLeast(1) * 60 * 20
         server.scheduler.runTaskTimer(this, Runnable { sessions.values.forEach(::save) }, every, every)
         logger.info("TapX v$version enabled - /tapx to play")
@@ -133,7 +132,17 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
 
     // ---------------------------------------------------------- events
     @EventHandler
-    fun onJoin(e: PlayerJoinEvent) = loadSession(e.player)
+    fun onJoin(e: PlayerJoinEvent) {
+        val p = e.player
+        loadSession(p)
+        val s = sessions[p.uniqueId] ?: return
+        if (autoStart(p)) {
+            // give the client a moment to finish loading the world, then straight into the game
+            server.scheduler.runTaskLater(this, Runnable { if (p.isOnline) arcade.enter(p, s) }, 20L)
+        } else arcade.recover(p, s)
+    }
+
+    private fun autoStart(p: Player) = config.getBoolean("auto-start", true) && !p.hasPermission("tapx.bypass")
 
     @EventHandler
     fun onQuit(e: PlayerQuitEvent) {
@@ -150,10 +159,14 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                 val s = sessions[p.uniqueId] ?: return true
                 if (arcade.isPlaying(p)) return reply(sender, "<gray>You're already playing! Sneak (shift) to leave.")
                 if (p.isDead) return true
-                reply(sender, "<gold>TapX</gold> <gray>- look around to aim, <white>left-click</white> to tap, <white>scroll</white> lists, <white>sneak</white> to leave. Press <white>F1</white> to hide your hotbar.")
+                reply(sender, "<gold>TapX</gold> <gray>- <white>left-click</white> to attack, <white>WASD</white> to move, <white>space</white> to select, <white>shift</white> to go back.")
                 arcade.enter(p, s)
             }
-            "leave", "exit" -> (sender as? Player)?.let { arcade.leave(it) }
+            "leave", "exit" -> {
+                val p = sender as? Player ?: return true
+                if (!config.getBoolean("allow-exit", false) && !p.hasPermission("tapx.admin")) return reply(sender, "<red>You can't leave the game on this server.")
+                arcade.leave(p)
+            }
             "top" -> {
                 reply(sender, "<gold><b>TapX Top Players")
                 leaderboard().take(10).forEachIndexed { i, e -> reply(sender, "<yellow>#${i + 1} <white>${e.name} <gray>- stage ${e.best}, ${e.prestiges} prestiges") }
@@ -167,7 +180,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     private fun help(sender: CommandSender) {
         reply(sender, "<gold><b>TapX</b> <gray>v$version - a Tap Titans-style idle game")
         reply(sender, "<yellow>/tapx <gray>- open the game screen")
-        reply(sender, "<yellow>/tapx leave <gray>- leave the game screen (or sneak)")
+        reply(sender, "<yellow>/tapx leave <gray>- leave the game screen (if allowed)")
         reply(sender, "<yellow>/tapx top <gray>- top players")
         if (sender.hasPermission("tapx.admin")) {
             reply(sender, "<yellow>/tapx admin give <player> <gold|gems|relics> <amount>")

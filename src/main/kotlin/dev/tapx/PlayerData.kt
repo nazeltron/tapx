@@ -31,6 +31,10 @@ class PlayerData {
     var lastSeen = System.currentTimeMillis()
     /** Where to send the player back to when they leave the game screen ("world;x;y;z;yaw;pitch"). */
     var returnTo: String? = null
+    /** Game mode to restore when leaving the game screen. */
+    var returnMode: String? = null
+    /** Per-player screen size (camera distance factor); 0 = not set up yet. */
+    var screenZoom = 0.0
 }
 
 class Stats {

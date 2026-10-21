@@ -51,3 +51,6 @@ tasks.register<JavaExec>("dumpMapColors") {
     mainClass.set("dev.tapx.DumpMapColorsKt")
     args(project.findProperty("out") ?: "build/mapcolors.json")
 }
+
+// src/test only holds dev tools (preview, colour dump), not unit tests.
+tasks.test { failOnNoDiscoveredTests.set(false) }

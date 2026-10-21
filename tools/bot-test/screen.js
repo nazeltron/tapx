@@ -48,40 +48,40 @@ function shot(name) {
   }
   fs.writeFileSync(`${OUT}/${name}.png`, PNG.sync.write(png));
 }
-// aim the bot's look at screen pixel (px, py); screen plane z = 1/16, top y = 103, left x = -3 (slot 0)
-async function aimAt(px, py) {
-  const e = bot.entity.position.offset(0, bot.entity.eyeHeight ?? 1.62, 0);
-  const tx = -3 + px / 128, ty = 103 - py / 128, tz = 1 / 16;
-  const dx = tx - e.x, dy = ty - e.y, dz = tz - e.z;
-  const yaw = Math.atan2(-dx, -dz), pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz));
-  await bot.look(yaw, pitch, true);
-  // vanilla yaw: degrees, 0 = south, clockwise; mineflayer yaw: radians, 0 = north, counter-clockwise
-  const myaw = (180 - yaw * 180 / Math.PI), mpitch = -pitch * 180 / Math.PI;
-  bot._client.write('look', { yaw: myaw, pitch: mpitch, flags: { onGround: false, hasHorizontalCollision: false } });
-  await sleep(150);
+// Keys are sent the way the vanilla client does: a player_input packet on press and release.
+async function key(name, hold = 120) {
+  const on = { forward: false, backward: false, left: false, right: false, jump: false, shift: false, sprint: false };
+  on[name] = true;
+  bot._client.write('player_input', { inputs: on });
+  await sleep(hold);
+  on[name] = false;
+  bot._client.write('player_input', { inputs: on });
+  await sleep(250);
 }
-async function clickAt(px, py, wait = 300) { await aimAt(px, py); bot.swingArm('right'); await sleep(wait); }
+async function click(wait = 120) { bot._client.write('arm_animation', { hand: 0 }); await sleep(wait); }
+let camera = null;
+bot._client.on('camera', p => { camera = p.cameraId; });
 bot.once('spawn', async () => {
   try {
-    await sleep(1000);
-    bot.chat('/tapx'); await sleep(3500);
-    await clickAt(448, 336, 400); // close the welcome-back popup if there is one
-    const ent = bot.entity;
-    console.log('bot eye pos', ent.position.x.toFixed(3), (ent.position.y + 1.62).toFixed(3), ent.position.z.toFixed(3), 'vehicle', !!bot.vehicle, 'frames', Object.keys(frames).length);
-    console.log('frame sample', JSON.stringify(Object.values(frames).slice(0, 2)));
+    await sleep(4500); // auto-start: no /tapx needed
+    console.log('gamemode', bot.game.gameMode, 'camera entity', camera, 'frames', Object.keys(frames).length);
     console.log('map packets', mapPackets, 'bytes', mapBytes);
     shot('01-start');
-    const b0 = mapBytes; await sleep(2000); console.log('idle bandwidth bytes/s ~', (mapBytes - b0) / 2);
-    // tap the monster 15 times (battle panel monster around x=6+350, y=6+330)
-    for (let i = 0; i < 15; i++) await clickAt(356, 330, 120);
-    await sleep(400); shot('02-after-taps');
-    await clickAt(512 + 6 + 61 + 29, 6 + 20, 600); shot('03-allies-tab');
-    await clickAt(512 + 6 + 5 * 61 + 29, 6 + 20, 600); shot('04-shop-tab');
-    bot.setQuickBarSlot(1); await sleep(400); shot('05-scrolled');
-    await clickAt(6 + 72, 6 + 18, 600); shot('06-achievements');
+    await key('jump', 150); await sleep(300);           // closes the first-time screen-size popup (DONE)
+    shot('02-after-done');
+    const b0 = mapBytes; await sleep(2000); console.log('bandwidth bytes/s ~', (mapBytes - b0) / 2);
+    for (let i = 0; i < 15; i++) await click(100);      // left-click = attack
+    await sleep(400); shot('03-after-taps');
+    await key('shift');                                 // selection -> Hero tab
+    await key('right'); await key('jump');              // -> Allies tab
+    shot('04-allies');
+    for (let i = 0; i < 3; i++) await key('backward');  // down the list
+    shot('05-allies-down');
+    await key('shift'); for (let i = 0; i < 4; i++) await key('right'); await key('jump'); // -> Shop
+    await key('backward'); await key('jump'); await sleep(800); // open the free chest
+    shot('06-shop-chest');
+    await key('shift'); await sleep(300); shot('07-closed');
     console.log('total map packets', mapPackets, 'bytes', mapBytes);
-    bot.setControlState('sneak', true); await sleep(1200); bot.setControlState('sneak', false);
-    console.log('after sneak: pos', bot.entity.position.toString(), 'frames still known', Object.keys(frames).length);
   } catch (e) { console.log('TEST ERROR', e); }
   bot.quit(); setTimeout(() => process.exit(0), 500);
 });

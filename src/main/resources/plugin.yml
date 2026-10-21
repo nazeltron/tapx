@@ -14,6 +14,9 @@ permissions:
   tapx.play:
     description: Play TapX
     default: true
+  tapx.bypass:
+    description: Don't get put into the game automatically on join
+    default: false
   tapx.admin:
     description: Use /tapx admin commands
     default: op

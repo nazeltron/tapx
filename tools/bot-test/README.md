@@ -6,5 +6,6 @@ Checks the real server -> client path without a Minecraft client:
 2. `../../gradlew -p ../.. dumpMapColors -Pout=$PWD/mapcolors.json` (map colour table)
 3. `npm install && node screen.js shots`
 
-The bot opens `/tapx`, rebuilds the screen from the glow-item-frame and map packets it receives,
-aims and clicks (tabs, taps, achievements), scrolls, then sneaks to leave. Screens are saved in `shots/`.
+The bot is auto-started into the game, rebuilds the screen from the glow-item-frame and map packets it
+receives, then clicks (taps) and uses WASD/space/shift input packets to move around the menus.
+Screens are saved in `shots/`.

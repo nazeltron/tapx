@@ -30,8 +30,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     private var map: MapScreen? = null
     private var task: ScheduledFuture<*>? = null
     private val inbox = ConcurrentLinkedQueue<() -> Unit>()
-    @Volatile private var cursorX = -1
-    @Volatile private var cursorY = -1
+    private var lastInput = BooleanArray(6)
     private var frames = 0L
     private val lastSound = HashMap<Sfx, Long>()
 
@@ -43,9 +42,14 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         if (active) inbox.add(action) else action()
     }
 
-    fun setCursor(pos: Pair<Int, Int>?) {
-        cursorX = pos?.first ?: -1
-        cursorY = pos?.second ?: -1
+    /** Movement keys from the client (WASD, space, shift). Called on the main thread. */
+    fun input(i: org.bukkit.Input) {
+        val now = booleanArrayOf(i.isForward, i.isBackward, i.isLeft, i.isRight, i.isJump, i.isSneak)
+        post {
+            val prev = lastInput
+            lastInput = now
+            screen.input(now[0], now[1], now[2], now[3], now[4], now[5], prev[4], prev[5])
+        }
     }
 
     private var clickWindow = 0L
@@ -58,7 +62,6 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         if (++clicksInWindow > plugin.config.getInt("max-taps-per-second", 20)) return
         post { screen.click() }
     }
-    fun scroll(delta: Int) = post { screen.scroll(delta) }
 
     fun start(screenMap: MapScreen) {
         if (active) return
@@ -67,6 +70,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         if (away > 30) screen.welcome(away, game.applyOffline(away, plugin.config.getDouble("max-offline-hours", 12.0)))
         d.lastSeen = System.currentTimeMillis()
         screenMap.spawn()
+        if (d.screenZoom <= 0) screen.calibrate()
         active = true
         val period = (1000 / plugin.config.getInt("fps", 10).coerceIn(2, 20)).toLong()
         task = plugin.gameThreads.scheduleAtFixedRate(::loop, 0, period, TimeUnit.MILLISECONDS)
@@ -90,8 +94,6 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
             val dt = 1.0 / plugin.config.getInt("fps", 10).coerceIn(2, 20)
             while (true) inbox.poll()?.invoke() ?: break
             if (!active) return
-            screen.cursorX = cursorX
-            screen.cursorY = cursorY
             game.update(dt)
             screen.update(dt)
             d.lastSeen = System.currentTimeMillis()
@@ -143,12 +145,20 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
 
     override fun leaderboard(): List<TopEntry> = plugin.leaderboard()
 
+    override val allowExit: Boolean get() = plugin.config.getBoolean("allow-exit", false) || player.hasPermission("tapx.admin")
+
+    override fun setZoom(zoom: Double) {
+        plugin.server.scheduler.runTask(plugin, Runnable { plugin.arcade.applyZoom(player, zoom) })
+    }
+
     override fun resetProgress() {
-        val back = d.returnTo
+        val old = d
         game.d = PlayerData().apply {
             name = player.name
             gems = plugin.config.getLong("starting-gems", 100)
-            returnTo = back
+            returnTo = old.returnTo
+            returnMode = old.returnMode
+            screenZoom = old.screenZoom
         }
         game.monster = null
     }

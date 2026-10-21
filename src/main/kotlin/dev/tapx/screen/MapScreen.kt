@@ -36,10 +36,13 @@ class MapScreen(
     val cols: Int,
     val rows: Int,
     private val mapIdBase: Int,
+    /** Extra tiles of plain border around the screen, so other FOVs/aspect ratios see edges, not sky. */
+    private val pad: Int = 0,
+    private val borderColor: Byte = 0,
 ) {
     val width = cols * 128
     val height = rows * 128
-    private val entityIds = IntArray(cols * rows)
+    private val entityIds = ArrayList<Int>()
     private val sent = Array(cols * rows) { ByteArray(128 * 128) }
     private var spawned = false
     private val right: Direction = facing.clockWise
@@ -48,24 +51,36 @@ class MapScreen(
 
     fun tileBlock(col: Int, row: Int): BlockPos = origin.relative(right, col).below(row)
 
-    fun spawn() {
+    private fun spawnFrame(pos: BlockPos, mapId: Int) {
         val level = (player.world as CraftWorld).handle
         val frameDir = facing.opposite
+        val frame = GlowItemFrame(level, pos, frameDir)
+        frame.isInvisible = true
+        frame.isSilent = true
+        val map = ItemStack(Items.FILLED_MAP)
+        map.set(DataComponents.MAP_ID, MapId(mapId))
+        frame.entityData.set(ItemFrame.DATA_ITEM, map)
+        entityIds += frame.id
+        send(ClientboundAddEntityPacket(frame.id, UUID.randomUUID(), pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(),
+            0f, 0f, EntityType.GLOW_ITEM_FRAME, frameDir.get3DDataValue(), Vec3.ZERO, 0.0))
+        frame.entityData.nonDefaultValues?.let { send(ClientboundSetEntityDataPacket(frame.id, it)) }
+    }
+
+    fun spawn() {
         for (row in 0 until rows) for (col in 0 until cols) {
             val i = row * cols + col
-            val pos = tileBlock(col, row)
-            val frame = GlowItemFrame(level, pos, frameDir)
-            frame.isInvisible = true
-            frame.isSilent = true
-            val map = ItemStack(Items.FILLED_MAP)
-            map.set(DataComponents.MAP_ID, MapId(mapIdBase + i))
-            frame.entityData.set(ItemFrame.DATA_ITEM, map)
-            entityIds[i] = frame.id
-            send(ClientboundAddEntityPacket(frame.id, UUID.randomUUID(), pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(),
-                0f, 0f, EntityType.GLOW_ITEM_FRAME, frameDir.get3DDataValue(), Vec3.ZERO, 0.0))
-            val data = frame.entityData.nonDefaultValues
-            if (data != null) send(ClientboundSetEntityDataPacket(frame.id, data))
+            spawnFrame(tileBlock(col, row), mapIdBase + i)
             sent[i].fill(-1) // force the first full upload
+        }
+        if (pad > 0) {
+            // every border tile shows the same plain map, sent once
+            val borderId = mapIdBase + cols * rows
+            for (row in -pad until rows + pad) for (col in -pad until cols + pad) {
+                if (row in 0 until rows && col in 0 until cols) continue
+                spawnFrame(tileBlock(col, row), borderId)
+            }
+            send(ClientboundMapItemDataPacket(MapId(borderId), 0.toByte(), true, Optional.empty(),
+                Optional.of(MapItemSavedData.MapPatch(0, 0, 128, 128, ByteArray(128 * 128) { borderColor }))))
         }
         spawned = true
     }
@@ -73,7 +88,8 @@ class MapScreen(
     fun remove() {
         if (!spawned) return
         spawned = false
-        send(ClientboundRemoveEntitiesPacket(*entityIds))
+        send(ClientboundRemoveEntitiesPacket(*entityIds.toIntArray()))
+        entityIds.clear()
     }
 
     /**

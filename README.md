@@ -5,27 +5,31 @@ A Tap Titans-style idle clicker for **Paper 1.21.11**, written in Kotlin, played
 
 ## How the screen works
 
-`/tapx` seats the player in a private, empty "arcade" world, facing a wall of maps in invisible
-glow item frames that only they can see. Together the maps form a 896×512 pixel screen that
-the plugin draws every frame (characters, generated monsters, worlds, menus, effects) and streams
-to the player, sending only the pixels that changed.
+Players join straight into the game (no command needed). Each player is put in spectator mode and
+their camera is locked onto an invisible camera point in a private, empty "arcade" world, facing a
+wall of maps in invisible glow item frames that only they can see. Together the maps form an
+896x512 pixel screen that the plugin draws every frame and streams to that player, sending only the
+pixels that changed. Spectator mode hides the hotbar, hand, hearts and crosshair, so the game is
+the whole view. Every player has their own screen, game and save; players don't see each other.
 
-- **Look around** to move the cursor (the crosshair is the mouse pointer)
-- **Left-click** to tap the monster and press buttons
-- **Mouse wheel** scrolls lists
-- **Sneak (shift)** or the **EXIT** button leaves and sends you back where you were
-- Press **F1** to hide the hotbar (a yellow cursor is drawn on the screen)
+**Controls**
+- **Left-click**: attack the monster (or press the highlighted button in a pop-up)
+- **W A S D**: move the highlight between buttons
+- **Space**: press the highlighted button
+- **Shift**: back / close pop-ups
 
-The screen is sized for the default 70° field of view (change `screen-fov` in the config to match).
+(A locked camera stops the client from sending mouse movement, so menus use the keyboard, like a
+console game.) On first join a **Screen size** check appears: W/D make the screen bigger, S/A
+smaller, until the yellow corners touch the window edges. It can be changed later in Settings.
 Maps can only show about 240 colours, so the art is slightly posterised.
 
 ## Install
 
 1. Drop `TapX-<version>.jar` into `plugins/` and restart. Requires Paper 1.21.11 and Java 21.
-2. Players type **`/tapx`**.
+2. Players are put into the game when they join. With `auto-start: false` they type **`/tapx`** instead.
 
-The plugin creates a void world called `tapx_arcade` for the screens. Each player gets their own
-seat (64 blocks apart), and players there are hidden from each other.
+The plugin creates a void world called `tapx_arcade` for the screens; each player gets their own
+spot (64 blocks apart). Leaving the game restores the player's game mode and location.
 
 ## The game
 
@@ -43,7 +47,8 @@ seat (64 blocks apart), and players there are hidden from each other.
 | Command | Permission | Default |
 | --- | --- | --- |
 | `/tapx` (aliases `/tap`, `/taptitans`): open the game screen | `tapx.play` | everyone |
-| `/tapx leave`: leave the screen | `tapx.play` | everyone |
+| `/tapx leave`: leave the screen (only if `allow-exit`, or admins) | `tapx.play` | everyone |
+| (not put into the game on join) | `tapx.bypass` | nobody |
 | `/tapx top`: leaderboard in chat | `tapx.play` | everyone |
 | `/tapx admin give <player> <gold\|gems\|relics> <amount>` | `tapx.admin` | op |
 | `/tapx admin stage <player> <stage>` | `tapx.admin` | op |
@@ -56,8 +61,10 @@ starting-gems: 100        # gems for new players
 max-offline-hours: 12     # cap on "while you were away" earnings
 max-taps-per-second: 20   # clicks per second that count (stops auto-clickers)
 autosave-minutes: 5
+auto-start: true          # put players into the game when they join
+allow-exit: false         # let players leave (EXIT button, /tapx leave); admins always can
 arcade-world: tapx_arcade # the void world used for screens
-screen-fov: 70            # field of view the screen is sized for
+screen-fov: 70            # field of view the screen is sized for (players can fine-tune in-game)
 fps: 10                   # screen updates per second (more = smoother, more bandwidth)
 render-threads: 2         # background threads that draw screens
 ```
@@ -82,7 +89,7 @@ mineflayer bot that plays on a local server and rebuilds the screen from the pac
 | `Game.kt` | Rules and formulas for one player |
 | `PlayerData.kt` | What gets saved per player |
 | `Session.kt` | One player's game loop on a background thread (input → update → draw → send) |
-| `Arcade.kt` | The void world, seats, cursor from view direction, input and protection events |
+| `Arcade.kt` | The void world, locked spectator cameras, keyboard/click input, protection events |
 | `screen/GameScreen.kt` | The whole 2D UI: battle, tabs, lists, pop-ups, effects, hit-testing |
 | `screen/Art.kt` | Procedural art (characters, monster generator, pets, backgrounds, icons) |
 | `screen/MapScreen.kt` | The per-player wall of fake item frames and partial map updates |

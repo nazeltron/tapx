@@ -13,11 +13,17 @@ max-taps-per-second: 20
 autosave-minutes: 5
 
 # --- Game screen ---
+# Put players straight into the game when they join (no /tapx needed).
+# Players with the permission tapx.bypass are not auto-started.
+auto-start: true
+# Let players leave the game screen (EXIT button and /tapx leave). Admins can always leave.
+allow-exit: false
+
 # The game is shown on a wall of maps in a private void world (no resource pack needed).
 # Name of that world (created automatically).
 arcade-world: tapx_arcade
-# The field of view (degrees) the screen is sized for. Players using a different FOV can
-# change it in their video settings; 70 is Minecraft's default.
+# The field of view (degrees) the screen is sized for; 70 is Minecraft's default.
+# Each player can fine-tune the size in-game (Settings -> Screen size).
 screen-fov: 70
 # Screen updates per second (higher = smoother, more bandwidth).
 fps: 10

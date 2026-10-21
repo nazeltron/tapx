@@ -41,6 +41,8 @@ fun main(args: Array<String>) {
         override fun exit() {}
         override fun leaderboard() = listOf(TopEntry(java.util.UUID.randomUUID(), "Steve", 41, 2), TopEntry(java.util.UUID.randomUUID(), "Alex", 33, 1))
         override fun resetProgress() {}
+        override val allowExit = false
+        override fun setZoom(zoom: Double) {}
     }
     screen = GameScreen(host, 896, 512)
     val ids = ByteArray(896 * 512)
@@ -55,21 +57,28 @@ fun main(args: Array<String>) {
         ImageIO.write(screen.image, "png", File(out, "$name-raw.png"))
     }
     fun step(n: Int) = repeat(n) { game.update(0.1); screen.update(0.1) }
+    data.screenZoom = 1.0
     step(3)
-    screen.cursorX = 300; screen.cursorY = 300
     repeat(4) { game.tap(false); step(1) }
     shot("battle-hero")
-    fun clickAt(x: Int, y: Int) { screen.cursorX = x; screen.cursorY = y; screen.render(); screen.click(); step(1) }
-    clickAt(512 + 6 + 1 * 61 + 20, 6 + 20); shot("allies")
-    clickAt(512 + 6 + 2 * 61 + 20, 6 + 20); shot("gear")
-    clickAt(512 + 6 + 3 * 61 + 20, 6 + 20); shot("pets")
-    clickAt(512 + 6 + 4 * 61 + 20, 6 + 20); shot("artifacts")
-    clickAt(512 + 6 + 5 * 61 + 20, 6 + 20); shot("shop")
+    // keyboard helpers: press and release a key (forward, back, left, right, jump, sneak)
+    fun key(k: Int) {
+        val on = BooleanArray(6); on[k] = true
+        screen.render(); screen.input(on[0], on[1], on[2], on[3], on[4], on[5], false, false)
+        screen.input(false, false, false, false, false, false, on[4], on[5]); step(1)
+    }
+    val W = 0; val S = 1; val A = 2; val D = 3; val SPACE = 4; val SHIFT = 5
+    key(SHIFT)                     // jump to the Hero tab button
+    key(D); key(SPACE); shot("allies")
+    key(D); key(SPACE); key(S); key(S); shot("gear")
+    key(SHIFT); key(D); key(D); key(SPACE); shot("pets")
+    key(D); key(SPACE); key(S); key(S); key(S); key(S); key(S); key(S); key(S); shot("artifacts-scrolled")
+    key(SHIFT); key(D); key(SPACE); shot("shop")
     data.stage = 45; game.monster = null; step(8); shot("lava-world")
     data.farming = false; data.wave = WAVES; game.monster = null; step(8); shot("boss")
-    clickAt(6 + 70, 6 + 16); shot("achievements")
+    screen.calibrate(); step(1); shot("calibrate")
+    key(SHIFT)
     // Which pixels change between idle frames? (red = changed) -> bandwidth hot spots
-    screen.cursorX = 700; screen.cursorY = 300
     data.stage = 3; game.monster = null; step(20)
     val diff = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)
     var changed = 0
