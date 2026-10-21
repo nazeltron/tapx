@@ -243,6 +243,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
             returnMode = old.returnMode
             screenZoom = old.screenZoom
             cursorSpeed = old.cursorSpeed
+            staff = old.staff
         }
         game.monster = null
     }

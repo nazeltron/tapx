@@ -193,7 +193,7 @@ object Essentials : Listener {
         }
         Cmds.register("list", listOf("online", "who"), perm = null, usage = "/list", tab = { emptyList() }) { c ->
             val visible = Bukkit.getOnlinePlayers().filter { it.uniqueId !in vanished || c.sender.hasPermission("tapx.cmd.vanish") }
-            c.sender.say("<gray>Online (<white>${visible.size}<gray>): " + visible.joinToString("<gray>, ") { "${rankTag(plugin.session(it)?.d?.rank)} <white>${it.name}" })
+            c.sender.say("<gray>Online (<white>${visible.size}<gray>): " + visible.joinToString("<gray>, ") { "${TabList.tag(it)} <white>${it.name}" })
         }
         Cmds.register("afk", perm = null, usage = "/afk", tab = { emptyList() }) { c ->
             val p = c.needPlayer() ?: return@register
@@ -255,7 +255,7 @@ object Essentials : Listener {
                 p.say("<gray>You are now <white>vanished<gray>.")
             } else {
                 vanished.remove(p.uniqueId)
-                Bukkit.getOnlinePlayers().filter { !plugin.arcade.isPlaying(it) || !plugin.arcade.isPlaying(p) }.forEach { it.showPlayer(plugin, p) }
+                Bukkit.getOnlinePlayers().forEach { it.showPlayer(plugin, p) }
                 p.say("<gray>You are <white>visible<gray> again.")
             }
             TabList.refreshAll()

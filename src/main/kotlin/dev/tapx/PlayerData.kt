@@ -67,6 +67,10 @@ class PlayerData {
     var training = mutableMapOf<String, Int>()
     /** Daily wheel spins used today (ranks give more). */
     var wheelSpins = 0
+
+    // --- added in 3.3
+    /** Staff rank given by command (owner, admin, mod, helper); kept on resets. */
+    var staff: String? = null
 }
 
 class LoginData {
@@ -137,6 +141,7 @@ fun PlayerData.resetKeepingPaid(): PlayerData {
         skins = old.skins
         skin = old.skin
         rank = old.rank
+        staff = old.staff
         stats.gemsBought = old.stats.gemsBought
         discordLinked = old.discordLinked
         discordRewarded = old.discordRewarded

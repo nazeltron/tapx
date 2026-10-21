@@ -1097,7 +1097,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             rows += section(title)
             when (sec) {
                 "rank" -> for (r in RANKS) {
-                    val have = rankIndex(d.rank) >= rankIndex(r.key)
+                    val have = rankIndex(d.perkRank()) >= rankIndex(r.key)
                     val cost = g.rankUpgradeCost(r)
                     rows += upgradeRow("rank:${r.key}", { x, y -> shopIcon("rank:${r.key}", x, y) },
                         "${r.name} RANK", rankPerks(r), when { d.rank == r.key -> "Your rank - click to see rewards"; have -> "Included - click to see rewards"; else -> "Click to see all ${rankRewards(r).size} rewards" },
@@ -1268,7 +1268,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     // ------------------------------------------------------------------ rank details
     private inner class RankModal(val r: Rank) : Modal("${r.name} RANK", 470, 410) {
         override fun body() {
-            val have = rankIndex(d.rank) >= rankIndex(r.key)
+            val have = rankIndex(d.perkRank()) >= rankIndex(r.key)
             val c = hex(r.hex)
             gfx.blit(Widgets.button(64, 64, c.shade(-0.15), lip = false), x + 24, y + 40)
             if (r.name.length <= 3) text(r.name, x + 56, y + 62, Color.WHITE, 2, 1) else text(r.name, x + 56, y + 66, Color.WHITE, 1, 1)

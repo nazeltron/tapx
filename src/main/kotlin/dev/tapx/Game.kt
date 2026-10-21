@@ -55,7 +55,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun st(id: String) = d.skillTree[id] ?: 0
     fun owns(id: String) = id in d.owned
     fun shopLevel(id: String) = d.shopLevels[id] ?: 0
-    fun rank() = rankDef(d.rank)
+    fun rank() = rankDef(d.perkRank())
     private fun ev(key: String) = ServerEvents.mult(key)
     private fun pass(id: String, x: Double) = if (owns(id)) x else 1.0
 
@@ -480,7 +480,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
 
     fun buyRank(key: String): String? {
         val r = rankDef(key) ?: return null
-        if (rankIndex(d.rank) >= rankIndex(key)) return null
+        if (rankIndex(d.perkRank()) >= rankIndex(key)) return null
         val cost = rankUpgradeCost(r)
         if (d.gems < cost) return null
         d.gems -= cost
@@ -502,7 +502,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     }
 
     /** Skins that come free with the player's rank (or any rank below it). */
-    fun rankSkin(id: String) = RANKS.take(rankIndex(d.rank) + 1).any { it.skin == id }
+    fun rankSkin(id: String) = RANKS.take(rankIndex(d.perkRank()) + 1).any { it.skin == id }
 
     fun buySkin(id: String): Boolean {
         val skin = skinDef(id) ?: return false
@@ -644,6 +644,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             it.login = old.login
             it.quests = old.quests
             it.rank = old.rank
+            it.staff = old.staff
             it.tutorial = old.tutorial
             it.wheelDay = old.wheelDay
             it.discordLinked = old.discordLinked

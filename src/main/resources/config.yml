@@ -49,10 +49,11 @@ resource-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/cl
 store-url: "https://tapx.paynow.store"
 ranks:
   # Also give LuckPerms groups named after the ranks (vip, pro, mvp, elite, titan, legend) if LuckPerms is installed.
+  # Staff ranks (owner, admin, mod, helper) are given with /rank set <player> <rank>.
   luckperms: true
 discord:
   # Invite link shown by /discord and /link. Linking itself needs the DiscordSRV plugin.
-  invite: ""
+  invite: "https://discord.gg/drillnetwork"
 piggy-bank:
   # Real money spent (from /tapx payment) that fills the piggy bank; when full everyone gets an event.
   goal-usd: 100
@@ -64,8 +65,10 @@ rules:
   - "No spam or advertising."
   - "Listen to staff."
 tab:
-  title: "TAPX"
-  subtitle: "Tap Titans, right in Minecraft"
+  # MiniMessage title, the line under it, and the address in the footer (blank = the Discord invite).
+  header: "<b><#ff4ae0>Tap</#ff4ae0><white>X</white></b>"
+  season: "SEASON I"
+  address: ""
 chat:
   # Rank tags, name colours and a stats card when hovering a name.
   format: true

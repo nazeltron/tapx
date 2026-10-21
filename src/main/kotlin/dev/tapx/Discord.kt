@@ -28,7 +28,8 @@ object Discord {
         linkManager()?.let { it.javaClass.getMethod("getDiscordId", UUID::class.java).invoke(it, uuid) as String? }
     }.getOrNull()
 
-    private fun invite() = plugin.config.getString("discord.invite", "")!!.ifBlank { "https://discord.gg/" }
+    fun invite(): String = (if (::plugin.isInitialized) plugin.config.getString("discord.invite", "")!! else "").ifBlank { DEFAULT_INVITE }
+    const val DEFAULT_INVITE = "https://discord.gg/drillnetwork"
 
     fun enable(p: TapXPlugin) {
         plugin = p

@@ -25,10 +25,10 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Coloured rank tag for chat/tab, e.g. "[VIP]". */
+/** Coloured rank tag for chat/tab, e.g. "VIP" in bold orange. */
 fun rankTag(rank: String?): String {
     val r = rankDef(rank) ?: return ""
-    return if (r.color == "rainbow") "<b><rainbow>[${r.name}]</rainbow></b>" else "<b><${r.color}>[${r.name}]</${r.color}></b>"
+    return if (r.color == "rainbow") "<b><rainbow>${r.name}</rainbow></b>" else "<b><${r.color}>${r.name}</${r.color}></b>"
 }
 
 class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
@@ -82,6 +82,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         Essentials.enable(this)
         TabList.enable(this)
         Discord.enable(this)
+        Cmds.register("rank", listOf("setrank", "ranks"), "tapx.admin", "/rank <set|add|remove|list> <player> [rank]", tab = { c -> rankArgs(c.args) }) { c -> rankCommand(c.sender, c.args) }
+        Cmds.register("gamepass", listOf("gamepasses", "gp", "pass"), "tapx.admin", "/gamepass <add|remove|set|list> <player> [pass]", tab = { c -> passArgs(c.args) }) { c -> passCommand(c.sender, c.args) }
         server.onlinePlayers.forEach(::loadSession)
         val every = config.getLong("autosave-minutes", 5).coerceAtLeast(1) * 60 * 20
         server.scheduler.runTaskTimer(this, Runnable { sessions.values.forEach(::save) }, every, every)
@@ -405,12 +407,12 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     })
 
     /** A store rank changed: LuckPerms group (optional) and the tab list. Any thread. */
-    fun rankChanged(p: Player, rank: String?) = server.scheduler.runTask(this, Runnable {
+    fun rankChanged(p: Player, rank: String?, bought: Boolean = true) = server.scheduler.runTask(this, Runnable {
         if (config.getBoolean("ranks.luckperms", true) && server.pluginManager.isPluginEnabled("LuckPerms")) {
             for (r in RANKS) server.dispatchCommand(server.consoleSender, "lp user ${p.name} parent remove ${r.key}")
             if (rank != null) server.dispatchCommand(server.consoleSender, "lp user ${p.name} parent add $rank")
         }
-        if (rank != null) Bukkit.broadcast(mm("$PREFIX<white>${p.name} <gray>just bought the ${rankTag(rank)} <gray>rank!"))
+        if (rank != null && bought) Bukkit.broadcast(mm("$PREFIX<white>${p.name} <gray>just bought the ${rankTag(rank)} <gray>rank!"))
         TabList.refresh(p)
     })
 
@@ -461,21 +463,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                             "<gray>, kills <white>${d.stats.kills}<gray>, taps <white>${d.stats.taps}<gray>, bought gems <white>${d.stats.gemsBought}"
                     }) noSave(who)
             }
-            "rank" -> {
-                val target = args.getOrNull(2)
-                val rank = args.getOrNull(3)?.lowercase()
-                if (who !in setOf("set", "remove") || target == null || (who == "set" && rankDef(rank) == null))
-                    return sender.say("<red>Usage: /tapx rank set <player> <${RANKS.joinToString("|") { it.key }}> <gray>or <red>/tapx rank remove <player>")
-                val newRank = if (who == "set") rank else null
-                if (!editPlayer(target, ::done) { d, _ -> d.rank = newRank; "<green>$target's rank is now ${newRank ?: "none"}." }) noSave(target)
-                else Bukkit.getPlayerExact(target)?.let { rankChanged(it, newRank) }
-            }
-            "pass", "gamepass" -> {
-                val target = args.getOrNull(2); val pass = args.getOrNull(3)?.lowercase()
-                if (who !in setOf("add", "remove") || target == null || SHOP_ITEMS.none { it.id == pass && it.kind == "perm" })
-                    return sender.say("<red>Usage: /tapx pass <add|remove> <player> <${SHOP_ITEMS.filter { it.kind == "perm" }.joinToString("|") { it.id }}>")
-                if (!editPlayer(target, ::done) { d, _ -> if (who == "add") d.owned += pass!! else d.owned -= pass!!; "<green>Done: $who $pass for $target." }) noSave(target)
-            }
+            "rank" -> rankCommand(sender, args.drop(1))
+            "pass", "gamepass" -> passCommand(sender, args.drop(1))
             "promo" -> when (who) {
                 "create" -> {
                     val code = args.getOrNull(2); val uses = args.getOrNull(3)?.toIntOrNull(); val hours = args.getOrNull(4)?.toDoubleOrNull()
@@ -501,6 +490,76 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         }
     }
 
+    private val rankKeys get() = RANKS.map { it.key } + STAFF_RANKS.map { it.key }
+    private val passIds get() = SHOP_ITEMS.filter { it.kind == "perm" }.map { it.id }
+
+    /**
+     * /rank set|add <player> <rank>, /rank remove <player> [rank], /rank list <player>. Store ranks
+     * (vip..legend) and staff ranks (owner, admin, mod, helper) are separate, so a player can have both.
+     */
+    fun rankCommand(sender: CommandSender, a: List<String>) {
+        if (!sender.hasPermission("tapx.admin")) return sender.say("<red>You don't have permission.")
+        val sub = a.getOrNull(0)?.lowercase(); val target = a.getOrNull(1); val key = a.getOrNull(2)?.lowercase()
+        fun usage() = sender.say("<red>Usage: /rank <set|add|remove|list> <player> [${rankKeys.joinToString("|")}]")
+        if (target == null) return usage()
+        val r = rankDef(key); val st = staffDef(key)
+        val result: (PlayerData) -> String = when (sub) {
+            "set", "add", "give" -> {
+                if (r == null && st == null) return usage();
+                { d -> if (st != null) d.staff = st.key else d.rank = r!!.key; "<green>$target now has the ${st?.name ?: r!!.name} rank." }
+            }
+            "remove", "take", "clear" -> when {
+                key == null -> { d -> d.rank = null; d.staff = null; "<green>Removed all of $target's ranks." }
+                st != null -> { d -> if (d.staff == st.key) d.staff = null; "<green>Removed ${st.name} from $target." }
+                r != null -> { d -> if (d.rank == r.key) d.rank = null; "<green>Removed ${r.name} from $target." }
+                else -> return usage()
+            }
+            "list", "check", "info" -> { d -> "<gold>$target: <gray>store rank <white>${rankDef(d.rank)?.name ?: "none"}<gray>, staff rank <white>${staffDef(d.staff)?.name ?: "none"}" }
+            else -> return usage()
+        }
+        val changes = sub !in setOf("list", "check", "info")
+        if (!editPlayer(target, { sender.say(it) }) { d, _ -> result(d) }) return sender.say("<red>$target has no TapX save.")
+        if (changes) server.scheduler.runTaskLater(this, Runnable {
+            Bukkit.getPlayerExact(target)?.let { p -> rankChanged(p, session(p)?.d?.rank, bought = false) }
+        }, 2L)
+    }
+
+    /** /gamepass add|remove <player> <pass|all>, /gamepass set <player> <pass> <true|false>, /gamepass list <player>. */
+    fun passCommand(sender: CommandSender, a: List<String>) {
+        if (!sender.hasPermission("tapx.admin")) return sender.say("<red>You don't have permission.")
+        val sub = a.getOrNull(0)?.lowercase(); val target = a.getOrNull(1); val id = a.getOrNull(2)?.lowercase()
+        fun usage() = sender.say("<red>Usage: /gamepass <add|remove|set|list> <player> [${(passIds + "all").joinToString("|")}] <gray>(set takes true/false)")
+        if (target == null) return usage()
+        val ids = if (id == "all") passIds else listOfNotNull(id?.takeIf { it in passIds })
+        val on = when (sub) {
+            "add", "give" -> true
+            "remove", "take" -> false
+            "set" -> a.getOrNull(3)?.lowercase()?.let { it in setOf("true", "yes", "on", "1") } ?: return usage()
+            "list", "check" -> null
+            else -> return usage()
+        }
+        if (on != null && ids.isEmpty()) return usage()
+        if (!editPlayer(target, { sender.say(it) }) { d, _ ->
+                if (on == null) "<gold>$target's gamepasses: <white>${d.owned.filter { it in passIds }.joinToString().ifEmpty { "none" }}"
+                else { if (on) d.owned += ids else d.owned -= ids.toSet(); "<green>${if (on) "Gave" else "Removed"} ${ids.joinToString()} ${if (on) "to" else "from"} $target." }
+            }) sender.say("<red>$target has no TapX save.")
+    }
+
+    fun rankArgs(args: List<String>): List<String> = when (args.size) {
+        1 -> listOf("set", "add", "remove", "list")
+        2 -> Bukkit.getOnlinePlayers().map { it.name }
+        3 -> if (args[0].lowercase() != "list") rankKeys else emptyList()
+        else -> emptyList()
+    }
+
+    fun passArgs(args: List<String>): List<String> = when (args.size) {
+        1 -> listOf("add", "remove", "set", "list")
+        2 -> Bukkit.getOnlinePlayers().map { it.name }
+        3 -> if (args[0].lowercase() != "list") passIds + "all" else emptyList()
+        4 -> if (args[0].lowercase() == "set") listOf("true", "false") else emptyList()
+        else -> emptyList()
+    }
+
     /** Copy a fresh save into an existing object (offline edits change the object in place). */
     private fun copyInto(from: PlayerData, to: PlayerData) {
         for (f in PlayerData::class.java.declaredFields) { f.isAccessible = true; f.set(to, f.get(from)) }
@@ -512,6 +571,10 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> {
+        if (args.size >= 2 && sender.hasPermission("tapx.admin")) when (args[0].lowercase()) {
+            "rank" -> return rankArgs(args.drop(1)).filter { it.startsWith(args.last(), ignoreCase = true) }
+            "pass", "gamepass" -> return passArgs(args.drop(1)).filter { it.startsWith(args.last(), ignoreCase = true) }
+        }
         val admin = sender.hasPermission("tapx.admin") && args[0].equals("admin", true)
         val gemsCmd = sender.hasPermission("tapx.admin") && args[0].equals("gems", true)
         val opts = when (args.size) {
@@ -521,8 +584,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
                 admin -> listOf("give", "stage", "reset")
                 gemsCmd -> listOf("give", "take", "set", "check")
                 args[0].lowercase() in setOf("reset", "set", "stats") -> Bukkit.getOnlinePlayers().map { it.name }
-                args[0].equals("rank", true) -> listOf("set", "remove")
-                args[0].equals("pass", true) || args[0].equals("gamepass", true) -> listOf("add", "remove")
+                args[0].equals("rank", true) -> rankArgs(args.drop(1))
+                args[0].equals("pass", true) || args[0].equals("gamepass", true) -> passArgs(args.drop(1))
                 args[0].equals("promo", true) -> listOf("create", "delete", "list")
                 args[0].equals("flashsale", true) -> listOf("10", "25", "50", "stop")
                 args[0].equals("resetall", true) -> listOf("confirm")
@@ -531,7 +594,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
             3 -> when {
                 admin || gemsCmd -> Bukkit.getOnlinePlayers().map { it.name }
                 args[0].equals("set", true) -> STAT_NAMES
-                args[0].equals("rank", true) && args[1].equals("set", true) -> emptyList()
+                args[0].equals("rank", true) -> rankArgs(args.drop(1))
+                args[0].equals("pass", true) || args[0].equals("gamepass", true) -> passArgs(args.drop(1))
                 else -> emptyList()
             }
             4 -> if (admin && args[1].equals("give", true)) listOf("gold", "gems", "relics") else emptyList()

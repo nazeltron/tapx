@@ -131,8 +131,24 @@ When the piggy bank fills (default $100 of purchases) everyone gets a 2x EVERYTH
 `/kick /ban /tempban /unban`, `/vanish`, `/invsee`, `/ec`, `/ci`, `/hat`, `/repair`, `/workbench`, `/day /night /sun /rain`,
 `/seen`, `/sudo`, `/nick`. For everyone: `/msg /r`, `/ping`, `/list`, `/afk`, `/rules`, `/store`, `/discord`, `/link`, `/promo`.
 
-**Tab list and chat** - styled header/footer (stage, gems, ping, TPS, running event, flash sale), names with rank or
-staff tags (`tapx.tag.owner/admin/mod/helper`), stage and AFK, sorted by rank; chat with tags and a stats card on hover.
+**Tab list and chat** - DrillSim-style tab: every online player (also those on the game screen) as
+`RANK Name ✦best-stage [prestiges]`, sorted staff > rank > stage; header with the title, season and any running
+event; footer with ONLINE / TPS / PING and the Discord invite (`tab.header`, `tab.season`, `tab.address`). Chat uses the
+same tags plus a stats card on hover. Default Discord invite: discord.gg/drillnetwork.
+
+**Ranks and gamepasses (admin)**
+
+| Command | What it does |
+| --- | --- |
+| `/rank set <player> <rank>` | Give a store rank (vip, pro, mvp, elite, titan, legend) or a staff rank (owner, admin, mod, helper) |
+| `/rank remove <player> [rank]` | Take one rank away, or all ranks when none is named |
+| `/rank list <player>` | Show a player's store and staff rank |
+| `/gamepass add\|remove <player> <pass\|all>` | Give or take gamepasses |
+| `/gamepass set <player> <pass> <true\|false>` / `/gamepass list <player>` | Set one gamepass / list them |
+
+Staff ranks are separate from store ranks and kept on resets. OWNER also gets every LEGEND perk. Ops without a
+staff rank show as ADMIN; the `tapx.tag.owner/admin/mod/helper` permissions also work. These commands work on offline
+players too, and `/tapx rank ...` / `/tapx pass ...` do the same.
 
 **Discord** - `/discord`, `/link`, `/unlink` through DiscordSRV (link codes like DrillSim). Linked players get x1.25
 gold forever and 5 pet eggs once.

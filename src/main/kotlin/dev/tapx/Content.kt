@@ -420,6 +420,19 @@ fun rankRewards(r: Rank): List<String> = buildList {
 }
 
 fun rankDef(key: String?) = RANKS.firstOrNull { it.key == key }
+
+/** Staff ranks, given only by command (/rank set <player> owner). OWNER also gets every LEGEND perk. */
+class StaffRank(val key: String, val name: String, val color: String, val order: Int)
+
+val STAFF_RANKS = listOf(
+    StaffRank("owner", "OWNER", "#b05aff", 4000), StaffRank("admin", "ADMIN", "#ff3a3a", 3000),
+    StaffRank("mod", "MOD", "#4ab8ff", 2000), StaffRank("helper", "HELPER", "#58d06a", 1000),
+)
+
+fun staffDef(key: String?) = STAFF_RANKS.firstOrNull { it.key == key }
+
+/** The store rank whose perks apply: the owner gets LEGEND's. */
+fun PlayerData.perkRank(): String? = if (staff == "owner") "legend" else rank
 fun rankIndex(key: String?) = RANKS.indexOfFirst { it.key == key }
 
 /** "x1.5 gold, x1.35 damage, +1 auto tap, 18h offline" */

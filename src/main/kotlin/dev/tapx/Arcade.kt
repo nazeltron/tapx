@@ -148,7 +148,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
                 a.removeModifier(waypointKey)
                 a.addTransientModifier(AttributeModifier(waypointKey, -1.0, AttributeModifier.Operation.MULTIPLY_SCALAR_1))
             }
-            for (o in Bukkit.getOnlinePlayers()) if (o != p && isPlaying(o)) { o.hidePlayer(plugin, p); p.hidePlayer(plugin, o) }
+            // players stay on each other's tab list: screens are 64 blocks apart, beyond entity tracking range
             // Sit on the camera entity: seated players send their head rotation every tick (our mouse),
             // even while their view is locked to the camera.
             camera.addPassenger(p)
@@ -214,7 +214,6 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             p.inventory.heldItemSlot = p.inventory.heldItemSlot // the wheel moved the client's slot; put it back
             p.updateInventory()
             p.sendExperienceChange(p.exp, p.level)
-            for (o in Bukkit.getOnlinePlayers()) if (o != p) { o.showPlayer(plugin, p); p.showPlayer(plugin, o) }
             if (restoreMode) p.gameMode = s?.d?.returnMode?.let { runCatching { GameMode.valueOf(it) }.getOrNull() } ?: GameMode.SURVIVAL
             // undo the client-only creative mode (setting the same mode sends nothing)
             p.handle.connection.send(ClientboundGameEventPacket(ClientboundGameEventPacket.CHANGE_GAME_MODE, p.handle.gameMode.gameModeForPlayer.id.toFloat()))
