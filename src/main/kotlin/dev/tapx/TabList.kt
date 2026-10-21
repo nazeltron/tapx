@@ -17,6 +17,9 @@ import org.bukkit.event.player.PlayerJoinEvent
  */
 object TabList : Listener {
     private lateinit var plugin: TapXPlugin
+    private const val DEFAULT_HEADER = "<b><gradient:#ffcf3a:#ff7a3a:#ff5a8a>TapX</gradient></b>"
+    /** The 3.3.0 default (magenta), replaced by the current one. */
+    private const val OLD_HEADER = "<b><#ff4ae0>Tap</#ff4ae0><white>X</white></b>"
 
     fun enable(p: TapXPlugin) {
         plugin = p
@@ -63,28 +66,29 @@ object TabList : Listener {
         val pr = d?.stats?.prestiges ?: 0
         val afk = if (p.uniqueId in Essentials.afk) " <gray><i>AFK</i>" else ""
         val sc = stageColor(best)
-        p.playerListName(mm("$t <b>$open${nameOf(p)}$close</b>  <b><$sc>✦$best</$sc></b> <b><dark_gray>[</dark_gray><${prestigeColor(pr)}>$pr</${prestigeColor(pr)}><dark_gray>]</dark_gray></b>$afk"))
+        val pc = prestigeColor(pr)
+        p.playerListName(mm("$t $open${nameOf(p)}$close  <$sc>✦$best</$sc> <$pc>[$pr]</$pc>$afk"))
         p.playerListOrder = (staff(p)?.order ?: 0) + (rankIndex(d?.rank) + 1) * 100 + minOf(99, best / 10)
     }
 
     fun refreshAll() {
         val online = Bukkit.getOnlinePlayers().filter { it.uniqueId !in Essentials.vanished }
         val tps = Bukkit.getTPS()[0].coerceAtMost(20.0)
-        val title = plugin.config.getString("tab.header", "<b><#ff4ae0>Tap</#ff4ae0><white>X</white></b>")!!
-        val season = plugin.config.getString("tab.season", "SEASON I")!!
-        val address = plugin.config.getString("tab.address", "")!!.ifBlank { Discord.invite().removePrefix("https://").removePrefix("http://") }.uppercase()
-        val top = ServerEvents.label()?.let { "<b><rainbow>ADMIN ABUSE</rainbow></b> <dark_gray>|</dark_gray> <rainbow>$it</rainbow> <gray>for <yellow>${fmtTime(ServerEvents.secondsLeft())}" }
-            ?: if (FlashSale.active()) "<b><yellow>⚡ FLASH SALE</yellow></b> <dark_gray>|</dark_gray> <white>${FlashSale.percent}% off the gem shop" else null
-        val line = "<#ff4ae0><st>                                                  </st>"
+        val title = plugin.config.getString("tab.header", "")!!.takeUnless { it.isBlank() || it == OLD_HEADER } ?: DEFAULT_HEADER
+        val season = smallCaps(plugin.config.getString("tab.season", "Season I")!!)
+        val address = plugin.config.getString("tab.address", "")!!.ifBlank { Discord.invite().removePrefix("https://").removePrefix("http://") }.let(::smallCaps)
+        val top = ServerEvents.label()?.let { "<b><rainbow>ADMIN ABUSE</rainbow></b> <dark_gray>|</dark_gray> <rainbow>${smallCaps(it)}</rainbow> <gray>${smallCaps("for")} <yellow>${fmtTime(ServerEvents.secondsLeft())}" }
+            ?: if (FlashSale.active()) "<b><yellow>⚡ FLASH SALE</yellow></b> <dark_gray>|</dark_gray> <white>${smallCaps("${FlashSale.percent}% off the gem shop")}" else null
+        val line = "<gradient:#ffcf3a:#ff7a3a:#ff5a8a><st>                                                  </st></gradient>"
         for (p in Bukkit.getOnlinePlayers()) {
             refresh(p)
             val ping = p.ping
             val pingColor = if (ping < 80) "#55ff55" else if (ping < 180) "#ffff55" else "#ff5555"
             p.sendPlayerListHeaderAndFooter(
-                mm("${top?.let { "$it\n" } ?: ""}$line\n$title\n<b><white>$season</white></b>\n"),
-                mm("\n<b><#ff4ae0>ONLINE: </#ff4ae0><white>${online.size}</white> <dark_gray>|</dark_gray> <#ff4ae0>TPS: </#ff4ae0><white>${"%.0f".format(tps)}</white> " +
-                    "<dark_gray>|</dark_gray> <#ff4ae0>PING: </#ff4ae0><$pingColor>$ping</$pingColor></b>\n\n" +
-                    "<b><gradient:#ff4ae0:#b05aff>$address</gradient></b>\n$line"),
+                mm("${top?.let { "$it\n" } ?: ""}$line\n$title\n<white>$season</white>\n"),
+                mm("\n<#ffb03a>${smallCaps("Online:")} </#ffb03a><white>${online.size}</white> <dark_gray>|</dark_gray> <#ffb03a>${smallCaps("TPS:")} </#ffb03a><white>${"%.0f".format(tps)}</white> " +
+                    "<dark_gray>|</dark_gray> <#ffb03a>${smallCaps("Ping:")} </#ffb03a><$pingColor>$ping</$pingColor>\n\n" +
+                    "<gradient:#ffcf3a:#ff7a3a:#ff5a8a>$address</gradient>\n$line"),
             )
         }
     }

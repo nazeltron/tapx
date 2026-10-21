@@ -52,3 +52,16 @@ fun mm(s: String): Component = MM.deserialize("<!i>$s")
 const val GOLD = "<#ffcf3a>●</#ffcf3a>"
 const val GEM = "<aqua>♦</aqua>"
 const val RELIC = "<red>❤</red>"
+
+private const val SMALL_CAPS = "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ"
+
+/** "Season I" -> "ꜱᴇᴀꜱᴏɴ ɪ" (letters only; MiniMessage tags are left alone). */
+fun smallCaps(s: String): String {
+    val out = StringBuilder(); var inTag = false
+    for (ch in s) {
+        if (ch == '<') inTag = true
+        out.append(if (!inTag && ch.lowercaseChar() in 'a'..'z') SMALL_CAPS[ch.lowercaseChar() - 'a'] else ch)
+        if (ch == '>') inTag = false
+    }
+    return out.toString()
+}

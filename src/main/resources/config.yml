@@ -66,8 +66,9 @@ rules:
   - "Listen to staff."
 tab:
   # MiniMessage title, the line under it, and the address in the footer (blank = the Discord invite).
-  header: "<b><#ff4ae0>Tap</#ff4ae0><white>X</white></b>"
-  season: "SEASON I"
+  header: "<b><gradient:#ffcf3a:#ff7a3a:#ff5a8a>TapX</gradient></b>"
+  # Written in small caps.
+  season: "Season I"
   address: ""
 chat:
   # Rank tags, name colours and a stats card when hovering a name.
