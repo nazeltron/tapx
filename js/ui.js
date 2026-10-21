@@ -506,6 +506,7 @@ function openSettings() {
   const ta = el('textarea', 'savebox'); ta.hidden = true; ta.rows = 3;
   opts.append(sound, exp, imp, reset);
   box.append(opts, ta);
+  box.appendChild(el('div', 'version', `TapX v${GAME_VERSION}`));
   openModal('Settings & Stats', box);
 }
 

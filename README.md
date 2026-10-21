@@ -8,7 +8,10 @@ the Web Audio API).
 
 ## Play
 
-Open `index.html` in a browser. There is nothing to install or build.
+The easiest way: download the single file in `dist/` (e.g. `dist/TapX-v1.0.0.html`)
+and open it in any browser. It contains the whole game, so it works on its own.
+
+From the source you can also open `index.html` directly. There is nothing to install.
 On a phone, put the folder on any static host (e.g. GitHub Pages) and open it.
 
 Or run a local server:
@@ -53,4 +56,10 @@ save export/import (⚙ button).
 | `js/art.js` | Procedural art: chibi characters, monster generator, pets, backgrounds, icons |
 | `js/ui.js` | Bottom panel: tabs, upgrade rows, shop, modals |
 | `js/main.js` | Battle view rendering, effects, input, main loop |
+| `tools/build.js` | Bundles everything into one file: `node tools/build.js` → `dist/TapX-v<version>.html` |
 | `tools/sim.js` | Headless balance simulator: `node tools/sim.js [hours] [tapsPerSecond]` |
+
+## Releasing an update
+
+1. Bump `GAME_VERSION` in `js/data.js` (e.g. `1.0.0` → `1.1.0`).
+2. Run `node tools/build.js`. It writes `dist/TapX-v<version>.html` and removes the old bundle.

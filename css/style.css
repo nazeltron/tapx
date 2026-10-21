@@ -161,3 +161,4 @@ button:disabled { cursor: default; }
 .savebox { width: 100%; margin-top: 8px; border-radius: 6px; border: 0; padding: 6px; background: #151726; color: #fff; font-family: monospace; font-size: 11px; }
 
 @media (min-width: 521px) { #app { border-left: 2px solid #000; border-right: 2px solid #000; } }
+.version { margin-top: 10px; text-align: center; font-size: 12px; color: var(--dim); }

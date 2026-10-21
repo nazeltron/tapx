@@ -2,6 +2,9 @@
 // Static game content. Every visual is described by numbers/colors here and
 // drawn in code by art.js — there are no image files.
 
+// Bump this for every update; tools/build.js puts it in the bundled file's name.
+const GAME_VERSION = '1.0.0';
+
 const WAVES = 8;            // normal monsters per stage before the boss
 const BOSS_TIME = 30;       // seconds to kill a boss
 const PRESTIGE_STAGE = 25;  // stage needed to prestige
