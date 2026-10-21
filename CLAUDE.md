@@ -2,15 +2,17 @@
 
 Paper 1.21.11 plugin (Kotlin, Gradle + paperweight-userdev) — a Tap Titans-style idle game shown on a
 full-screen 2D map screen (fake glow item frames + map packets, per player, in a void "arcade" world).
-Players are auto-started in spectator mode, seated on an ItemDisplay camera entity with a raw
-SetCamera packet. Input: left-click (spectators send an attack interact packet on the fake frame, not a swing), mouse cursor (the seated player's head-rotation
-packets are read by a Netty handler and turned into cursor movement, re-centred with relative rotation
-packets; the cursor is overlaid on the map colours every 50 ms, separately from the full frame), WASD/space/shift (PlayerInputEvent). Gems are the paid currency (`/tapx gems ...` for the
+Players are auto-started in ADVENTURE mode, invisible, seated on an ItemDisplay camera entity with a
+raw SetCamera packet (camera != player, so no hotbar/hearts; client is sent an empty inventory and 0 XP
+so no hand/level). ScreenPack (served over HTTP on the MC port via a Paper channel listener) blanks the
+crosshair + XP bar sprites. A Netty handler reads input: clicks = ServerboundInteractPacket, mouse =
+head rotation (re-centred with relative rotation packets), wheel = ServerboundSetCarriedItemPacket;
+it drops item/inventory packets. The cursor is overlaid on the map colours every 25 ms, separately
+from the full frame. WASD/space/shift come from PlayerInputEvent. Gems are the paid currency (`/tapx gems ...` for the
 web store). No resource pack. `web/` is the old
 browser prototype, reference only.
 
 Balance follows the browser prototype: compare `./gradlew sim` with `node web/tools/sim.js`.
-The mouse wheel can't be read in spectator mode (client-only fly speed), so lists scroll by scroll bar / W/S.
 
 ## Every update
 - Bump `version` in `gradle.properties` (patch for fixes, minor for new features, major for reworks).

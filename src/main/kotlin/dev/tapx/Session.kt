@@ -76,6 +76,17 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         }
     }
 
+    @Volatile private var wheelSlot = 0
+
+    fun wheelStart(slot: Int) { wheelSlot = slot }
+
+    /** The mouse wheel: the client's hotbar slot, one step per notch. Called on the network thread. */
+    fun wheel(slot: Int) {
+        val steps = (slot - wheelSlot + 9 + 4) % 9 - 4 // shortest way round the 9 slots
+        wheelSlot = slot
+        if (steps != 0) post { screen.wheel(steps) }
+    }
+
     /** Movement keys from the client (WASD, space, shift). Called on the main thread. */
     fun input(i: org.bukkit.Input) {
         val now = booleanArrayOf(i.isForward, i.isBackward, i.isLeft, i.isRight, i.isJump, i.isSneak)

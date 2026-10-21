@@ -15,9 +15,8 @@ the whole view. Every player has their own screen, game and save; players don't 
 **Controls**
 - **Mouse**: moves the on-screen cursor (speed adjustable in Settings)
 - **Left-click**: press the button under the cursor, or attack when the cursor is over the battle
-- **Scrolling lists**: drag the scroll bar (click it, move, click again), hold **W/S** with the
-  cursor over the list, or rest the cursor at the top/bottom edge of the list. (The mouse wheel
-  can't be used: in spectator mode Minecraft only uses it for fly speed and never tells the server.)
+- **Mouse wheel**: scroll lists (also: drag the scroll bar, hold **W/S** over a list, or rest the
+  cursor at the top/bottom edge of a list)
 - **A D / Space**: optional keyboard navigation (jump the cursor between buttons, press)
 - **Shift**: back / close pop-ups
 
@@ -27,6 +26,13 @@ re-centres the head before it reaches the up/down limit). The screen is sized to
 window; on first join a **Screen size** check appears (+/- until the yellow corners touch the
 window edges), and it can be changed later in Settings.
 Maps can only show about 240 colours, so the art is slightly posterised.
+
+**No crosshair**: players sit invisible, in adventure mode, on the camera entity (so the client
+draws no hotbar, hearts or hand, and the mouse wheel reaches the server as hotbar-slot changes).
+While playing they get a tiny resource pack that blanks the crosshair and XP bar; the plugin serves
+it on the Minecraft port itself, so there's nothing to set up. Players are asked once to accept it.
+Behind a proxy (Velocity/BungeeCord), upload `plugins/TapX/tapx-screen-pack.zip` somewhere and set
+`resource-pack-url`. Their real inventory and XP are untouched; the client is just shown them empty.
 
 ## Install
 
@@ -94,6 +100,8 @@ screen-fov: 70            # field of view the screen is sized for (players can f
 screen-aspect: 1.778      # window shape the screen is sized for (16:9)
 fps: 10                   # screen updates per second (more = smoother, more bandwidth)
 render-threads: 2         # background threads that draw screens
+hide-crosshair: true      # send the crosshair-hiding pack to players on the game screen
+resource-pack-url: ""     # host the pack yourself (needed behind a proxy); empty = served on the game port
 ```
 
 Player progress is saved to `plugins/TapX/players/<uuid>.json`.

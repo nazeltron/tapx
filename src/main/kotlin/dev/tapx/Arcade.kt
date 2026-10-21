@@ -6,7 +6,19 @@ import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.kyori.adventure.text.Component
+import net.minecraft.core.NonNullList
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket
 import net.minecraft.network.protocol.game.ClientboundSetCameraPacket
+import net.minecraft.network.protocol.game.ClientboundSetExperiencePacket
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
+import net.minecraft.network.protocol.game.ServerboundPickItemFromBlockPacket
+import net.minecraft.network.protocol.game.ServerboundPickItemFromEntityPacket
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket
+import net.minecraft.network.protocol.game.ServerboundUseItemPacket
+import net.minecraft.world.item.ItemStack
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundSwingPacket
 import net.minecraft.network.protocol.game.ServerboundInteractPacket
@@ -45,10 +57,14 @@ import kotlin.math.tan
 
 /**
  * The "arcade": an empty void world where each player's camera is locked in front of their own
- * map screen, so the game fills their whole view. Players are put in spectator mode (no hotbar,
- * hand, hearts or crosshair) and spectate an invisible camera entity.
+ * map screen, so the game fills their whole view. Players sit, invisible and in adventure mode, on
+ * an invisible camera entity whose view the client is switched to. With the camera not being the
+ * player, the client draws no hotbar or hearts; the player is invisible with (client-side) empty
+ * hands, so no arm; [ScreenPack] blanks the crosshair and XP bar. Not being in spectator mode
+ * matters for the mouse wheel: it changes the hotbar slot, which the server is told about.
  *
- * Input: left-click (arm swing packet) taps, WASD/space/shift arrive as client input packets.
+ * Input, read straight off the connection: clicks (attack/interact on whatever is in front of the
+ * camera), mouse movement (head rotation), the wheel (held slot); WASD/space/shift from PlayerInputEvent.
  */
 class Arcade(private val plugin: TapXPlugin) : Listener {
     lateinit var world: World
@@ -116,7 +132,10 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             if (!p.isOnline) return@thenRun
             val camera = world.spawn(cam, ItemDisplay::class.java) { it.isPersistent = false; it.teleportDuration = 2 }
             seats[p.uniqueId] = Seat(slot, camera)
-            p.gameMode = GameMode.SPECTATOR
+            p.gameMode = GameMode.ADVENTURE
+            p.isInvisible = true
+            hideHud(p)
+            plugin.pack.send(p)
             // the screen must be within reach so clicks "hit" it (no miss cooldown on the client)
             p.getAttribute(Attribute.ENTITY_INTERACTION_RANGE)?.let { a ->
                 a.removeModifier(reachKey)
@@ -127,6 +146,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             // even while their view is locked to the camera.
             camera.addPassenger(p)
             installInput(p, s)
+            plugin.server.scheduler.runTaskLater(plugin, Runnable { if (isPlaying(p)) p.sendActionBar(Component.empty()) }, 2L) // "press shift to dismount"
             // let the client learn about the camera entity before switching the view to it
             plugin.server.scheduler.runTaskLater(plugin, Runnable {
                 if (!isPlaying(p)) return@Runnable
@@ -143,6 +163,20 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         val seat = seats[p.uniqueId] ?: return
         if (!seat.camera.passengers.contains(p)) seat.camera.addPassenger(p)
         (p as CraftPlayer).handle.connection.send(ClientboundSetCameraPacket((seat.camera as CraftEntity).handle))
+        hideHud(p)
+    }
+
+    /**
+     * Tell only the client that its inventory is empty and its XP is zero, so nothing is held in
+     * view and no level number shows. The real inventory is untouched and re-sent on leaving;
+     * packets that would act on it are dropped while playing (see [installInput]).
+     */
+    private fun hideHud(p: Player) {
+        val sp = (p as CraftPlayer).handle
+        val menu = sp.inventoryMenu
+        sp.connection.send(ClientboundContainerSetContentPacket(menu.containerId, menu.incrementStateId(),
+            NonNullList.withSize(menu.slots.size, ItemStack.EMPTY), ItemStack.EMPTY))
+        sp.connection.send(ClientboundSetExperiencePacket(0f, 0, 0))
     }
 
     /** Move the camera closer/further so the screen fits this player's field of view. */
@@ -163,6 +197,11 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             seat.camera.removePassenger(p)
             seat.camera.remove()
             p.getAttribute(Attribute.ENTITY_INTERACTION_RANGE)?.removeModifier(reachKey)
+            p.isInvisible = false
+            plugin.pack.remove(p)
+            p.inventory.heldItemSlot = p.inventory.heldItemSlot // the wheel moved the client's slot; put it back
+            p.updateInventory()
+            p.sendExperienceChange(p.exp, p.level)
             for (o in Bukkit.getOnlinePlayers()) if (o != p) { o.showPlayer(plugin, p); p.showPlayer(plugin, o) }
             if (restoreMode) p.gameMode = s?.d?.returnMode?.let { runCatching { GameMode.valueOf(it) }.getOrNull() } ?: GameMode.SURVIVAL
             if (teleportBack) p.teleport(s?.d?.returnTo?.let(::stringToLoc) ?: Bukkit.getWorlds()[0].spawnLocation)
@@ -182,6 +221,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         leaving += p.uniqueId
         try {
             p.gameMode = s.d.returnMode?.let { runCatching { GameMode.valueOf(it) }.getOrNull() } ?: GameMode.SURVIVAL
+            p.isInvisible = false
             if (p.world == world) p.teleport(s.d.returnTo?.let(::stringToLoc) ?: Bukkit.getWorlds()[0].spawnLocation)
         } finally {
             leaving -= p.uniqueId
@@ -191,20 +231,27 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
     }
 
     // ---------------------------------------------------------- input
-    // Left-clicks arrive as arm-swing packets; we read them straight off the connection so they're
-    // instant and work in spectator mode.
     private fun installInput(p: Player, s: Session) {
+        s.wheelStart(p.inventory.heldItemSlot)
         val ch = (p as CraftPlayer).handle.connection.connection.channel
         ch.eventLoop().execute {
             if (ch.pipeline().get(HANDLER) == null && ch.pipeline().get("packet_handler") != null) {
                 ch.pipeline().addBefore("packet_handler", HANDLER, object : ChannelInboundHandlerAdapter() {
                     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
                         when (msg) {
-                            is ServerboundSwingPacket -> s.click()
-                            // spectators don't swing: a left-click on the screen arrives as an attack on a
-                            // (fake) frame, a right-click as an interaction. Both are clicks; neither goes on.
+                            // a left-click arrives as an attack on whatever is in front of the camera (a frame,
+                            // or the player itself), a right-click as an interaction; the swing that follows is ignored
                             is ServerboundInteractPacket -> { if (isClick(msg)) s.click(); return }
                             is ServerboundMovePlayerPacket -> if (msg.hasRotation()) s.look(msg.getYRot(0f), msg.getXRot(0f))
+                            // the mouse wheel: the client's hotbar slot moves one step per notch
+                            is ServerboundSetCarriedItemPacket -> { s.wheel(msg.slot); return }
+                            // the client thinks its inventory is empty: keep it away from the real one
+                            is ServerboundUseItemPacket, is ServerboundUseItemOnPacket, is ServerboundPickItemFromBlockPacket,
+                            is ServerboundPickItemFromEntityPacket, is ServerboundSwingPacket -> return
+                            is ServerboundContainerClickPacket -> if (msg.containerId == 0) return
+                            is ServerboundPlayerActionPacket -> if (msg.action != ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK &&
+                                msg.action != ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK &&
+                                msg.action != ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK) return
                         }
                         super.channelRead(ctx, msg)
                     }
@@ -254,7 +301,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onGameMode(e: PlayerGameModeChangeEvent) {
         val p = e.player
-        if (isPlaying(p) && p.uniqueId !in leaving && e.newGameMode != GameMode.SPECTATOR) {
+        if (isPlaying(p) && p.uniqueId !in leaving && e.newGameMode != GameMode.ADVENTURE) {
             // an admin changed their game mode: let them out where they are
             plugin.server.scheduler.runTask(plugin, Runnable { leave(p, teleportBack = false, restoreMode = false) })
         }

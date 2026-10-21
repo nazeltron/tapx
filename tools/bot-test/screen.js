@@ -80,6 +80,10 @@ async function mouse(dYaw, dPitch, steps = 6) {
 let cx = 448, cy = 256;
 async function pointAt(x, y) { await mouse((x - cx) / 7, (y - cy) / 7); cx = x; cy = y; }
 bot._client.on('camera', p => { camera = p.cameraId; });
+bot._client.on('add_resource_pack', p => console.log('resource pack offered:', p.url));
+// The mouse wheel: a vanilla client moves its hotbar slot one step per notch and tells the server.
+let slot = 0;
+async function wheel(notches) { for (let i = 0; i < Math.abs(notches); i++) { slot = (slot + Math.sign(notches) + 9) % 9; bot._client.write('held_item_slot', { slotId: slot }); await sleep(60); } await sleep(300); }
 // Like the vanilla client: apply the server's (relative) rotation and echo it straight back.
 let recentres = 0;
 bot._client.on('player_rotation', p => {
@@ -89,7 +93,7 @@ bot._client.on('player_rotation', p => {
 bot.once('spawn', async () => {
   try {
     await sleep(4500); // auto-start: no /tapx needed
-    console.log('gamemode', bot.game.gameMode, 'camera entity', camera, 'vehicle', !!bot.vehicle, 'frames', Object.keys(frames).length);
+    console.log('gamemode', bot.game.gameMode, 'invisible', !!(bot.entity.metadata[0] & 0x20), 'camera entity', camera, 'vehicle', !!bot.vehicle, 'frames', Object.keys(frames).length);
     shot('01-start');
     await pointAt(448 + 128, 256 + 98 - 30); await click(); // "+" in the screen-size popup? (just aims and clicks)
     await pointAt(448, 256 + 90); await click(300);        // DONE
@@ -103,6 +107,8 @@ bot.once('spawn', async () => {
     shot('05-shop');
     await pointAt(512 + 378 - 60, 200);                      // hover a shop button
     shot('06-hover');
+    await pointAt(700, 250); await wheel(4); shot('06a-wheel-down');   // scroll the shop with the wheel
+    await wheel(-2); shot('06a-wheel-up');
     await pointAt(878, 140); await click(200);             // grab the scroll bar...
     await pointAt(878, 330); shot('06b-scrollbar-drag');     // ...and drag it down
     await click(200);                                        // let go

@@ -35,6 +35,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     private lateinit var pendingFile: File
     lateinit var arcade: Arcade
         private set
+    lateinit var pack: ScreenPack
+        private set
 
     // One writer thread keeps saves for the same player in order.
     private val writer: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "TapX-save").apply { isDaemon = true } }
@@ -56,6 +58,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         gameThreads = Executors.newScheduledThreadPool(config.getInt("render-threads", 2).coerceIn(1, 8)) {
             Thread(it, "TapX-game-${n.incrementAndGet()}").apply { isDaemon = true }
         }
+        pack = ScreenPack(this).also { it.enable() }
         arcade = Arcade(this)
         arcade.load()
         loadLeaderboard()
@@ -71,6 +74,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
 
     override fun onDisable() {
         if (::arcade.isInitialized) arcade.leaveAll()
+        if (::pack.isInitialized) pack.disable()
         for (s in sessions.values) {
             s.stop()
             val json = gson.toJson(s.d)

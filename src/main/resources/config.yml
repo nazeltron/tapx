@@ -31,3 +31,9 @@ screen-aspect: 1.778
 fps: 10
 # Background threads used to draw screens.
 render-threads: 2
+
+# Players on the game screen get a tiny resource pack that hides the crosshair and XP bar. It is
+# served on the Minecraft port itself (no extra setup). Behind a proxy (Velocity/Bungee), upload
+# plugins/TapX/tapx-screen-pack.zip somewhere and put its direct download link in resource-pack-url.
+hide-crosshair: true
+resource-pack-url: ""

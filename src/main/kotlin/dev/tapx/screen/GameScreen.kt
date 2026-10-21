@@ -123,6 +123,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
     }
 
+    /** Mouse wheel notches (positive = down): scrolls the list, or a pop-up's list. */
+    fun wheel(steps: Int) {
+        if (modal != null) return
+        scrollBy(steps * 52)
+    }
+
     /** Left-click (or space): press the button under the cursor, otherwise attack. */
     fun click() {
         if (dragging) { dragging = false; return }
@@ -767,7 +773,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         } else dragging = false
         // footer
         gfx.fill(Rectangle2D.Double(RX + 6.0, RY + RH - 66.0, RW - 12.0, 60.0), hex("22243a"))
-        val lines = wrap(footer.ifEmpty { "Move the mouse to aim, LEFT-CLICK to attack and press buttons. Scroll lists with W/S or the scroll bar. SHIFT: back" }, RW - 24)
+        val lines = wrap(footer.ifEmpty { "Move the mouse to aim, LEFT-CLICK to attack and press buttons, scroll the MOUSE WHEEL for lists. SHIFT: back" }, RW - 24)
         lines.take(4).forEachIndexed { i, l -> text(l, RX + 12, RY + RH - 60 + i * 12, hex("c8cbd8")) }
     }
 
