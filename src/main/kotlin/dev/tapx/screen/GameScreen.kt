@@ -405,13 +405,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         buttons = nextButtons
         val sel = buttonAt(curX.toInt(), curY.toInt())
         selected = sel?.id
-        if (sel != null) drawSelection(sel)
+        if (sel != null && sel.id != "tap-monster") drawSelection(sel)
         // hovering near the top/bottom of a list scrolls it
         if (modal == null && curX >= RX && curX < RX + RW) {
             if (curY in LIST_Y.toDouble()..LIST_Y + 14.0) scrollBy(-10)
             if (curY in LIST_Y + LIST_H - 14.0..LIST_Y + LIST_H.toDouble()) scrollBy(10)
         }
-        drawCursor()
     }
 
     private fun drawSelection(b: Button) {
@@ -422,9 +421,24 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
     }
 
-    private fun drawCursor() {
-        val x = curX; val y = curY
-        gfx.fillStroke(path { moveTo(x, y); lineTo(x, y + 14); lineTo(x + 4, y + 11); lineTo(x + 7, y + 17); lineTo(x + 10, y + 15); lineTo(x + 7, y + 10); lineTo(x + 12, y + 10); closePath() }, hex("ffd23a"), 1.5f)
+    /** Changes whenever the cursor moves to another pixel. */
+    fun cursorKey(): Long = (curX.toLong() shl 32) or curY.toLong()
+
+    /**
+     * Draw the cursor straight onto a frame of map colours. It is kept out of [render] so it can
+     * move every client tick without redrawing the whole screen.
+     */
+    fun overlayCursor(map: ByteArray) {
+        val x0 = curX.toInt(); val y0 = curY.toInt()
+        for (y in 0 until CURSOR_H) {
+            val ty = y0 + y - 1
+            if (ty !in 0 until height) continue
+            for (x in 0 until CURSOR_W) {
+                val tx = x0 + x - 1
+                val i = y * CURSOR_W + x
+                if (cursorMask[i] && tx in 0 until width) map[ty * width + tx] = cursorSprite[i]
+            }
+        }
     }
 
     private fun scrollBy(pixels: Int) {
@@ -1220,3 +1234,28 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
     }
 }
+
+private const val CURSOR_W = 15
+private const val CURSOR_H = 21
+/** The arrow cursor, drawn once: a white arrow with a solid black border (visible on any colour). */
+private val cursorImage: BufferedImage by lazy {
+    val img = BufferedImage(CURSOR_W, CURSOR_H, BufferedImage.TYPE_INT_ARGB)
+    val g = img.createGraphics()
+    g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
+    g.translate(1.0, 1.0)
+    g.color = java.awt.Color.WHITE
+    g.fill(java.awt.geom.Path2D.Double().apply {
+        moveTo(0.0, 0.0); lineTo(0.0, 15.0); lineTo(4.0, 11.5); lineTo(7.0, 17.5); lineTo(9.5, 16.5); lineTo(7.0, 10.5); lineTo(11.5, 10.5); closePath()
+    })
+    g.dispose()
+    // every empty pixel touching the arrow becomes the border
+    val fill = Array(CURSOR_H) { y -> BooleanArray(CURSOR_W) { x -> (img.getRGB(x, y) ushr 24) >= 128 } }
+    for (y in 0 until CURSOR_H) for (x in 0 until CURSOR_W) {
+        if (fill[y][x]) continue
+        val edge = (-1..1).any { dy -> (-1..1).any { dx -> fill.getOrNull(y + dy)?.getOrNull(x + dx) == true } }
+        if (edge) img.setRGB(x, y, 0xff101010.toInt())
+    }
+    img
+}
+private val cursorSprite = ByteArray(CURSOR_W * CURSOR_H) { i -> Palette.toMap(cursorImage.getRGB(i % CURSOR_W, i / CURSOR_W) and 0xffffff) }
+private val cursorMask = BooleanArray(CURSOR_W * CURSOR_H) { i -> (cursorImage.getRGB(i % CURSOR_W, i / CURSOR_W) ushr 24) >= 128 }

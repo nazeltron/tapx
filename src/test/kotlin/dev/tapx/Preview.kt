@@ -49,6 +49,7 @@ fun main(args: Array<String>) {
     fun shot(name: String) {
         screen.render()
         Palette.convert(screen.pixels, ids)
+        screen.overlayCursor(ids)
         val img = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)
         for (i in ids.indices) {
             img.setRGB(i % 896, i / 896, MapColor.getColorFromPackedId(ids[i].toInt() and 255))
@@ -62,6 +63,8 @@ fun main(args: Array<String>) {
     step(3)
     repeat(4) { game.tap(false); step(1) }
     shot("battle-hero")
+    screen.mouse(-12.5, 16.0); shot("hover-monster")
+    screen.mouse(12.5, -16.0)
     // mouse helpers: the cursor starts in the middle; 7 screen pixels per degree of head turn
     var cx = 448.0; var cy = 256.0
     fun pointAt(x: Int, y: Int) { screen.mouse((x - cx) / 7, (y - cy) / 7); cx = x.toDouble(); cy = y.toDouble(); screen.render() }

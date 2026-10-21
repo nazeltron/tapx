@@ -9,6 +9,9 @@ import net.minecraft.core.Direction
 import net.minecraft.network.protocol.game.ClientboundSetCameraPacket
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.network.protocol.game.ServerboundSwingPacket
+import net.minecraft.network.protocol.game.ServerboundInteractPacket
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.phys.Vec3
 import io.papermc.paper.entity.TeleportFlag
 import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.Bukkit
@@ -196,13 +199,29 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             if (ch.pipeline().get(HANDLER) == null && ch.pipeline().get("packet_handler") != null) {
                 ch.pipeline().addBefore("packet_handler", HANDLER, object : ChannelInboundHandlerAdapter() {
                     override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
-                        if (msg is ServerboundSwingPacket) s.click()
-                        else if (msg is ServerboundMovePlayerPacket && msg.hasRotation()) s.look(msg.getYRot(0f), msg.getXRot(0f))
+                        when (msg) {
+                            is ServerboundSwingPacket -> s.click()
+                            // spectators don't swing: a left-click on the screen arrives as an attack on a
+                            // (fake) frame, a right-click as an interaction. Both are clicks; neither goes on.
+                            is ServerboundInteractPacket -> { if (isClick(msg)) s.click(); return }
+                            is ServerboundMovePlayerPacket -> if (msg.hasRotation()) s.look(msg.getYRot(0f), msg.getXRot(0f))
+                        }
                         super.channelRead(ctx, msg)
                     }
                 })
             }
         }
+    }
+
+    /** Left-click (attack), or a right-click counted once (main hand, the packet with a hit position). */
+    private fun isClick(msg: ServerboundInteractPacket): Boolean {
+        var click = false
+        msg.dispatch(object : ServerboundInteractPacket.Handler {
+            override fun onAttack() { click = true }
+            override fun onInteraction(hand: InteractionHand) {}
+            override fun onInteraction(hand: InteractionHand, pos: Vec3) { click = hand == InteractionHand.MAIN_HAND }
+        })
+        return click
     }
 
     private fun removeInput(p: Player) {

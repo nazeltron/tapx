@@ -24,6 +24,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     val d get() = game.d
     val screen = GameScreen(this, SCREEN_COLS * 128, SCREEN_ROWS * 128)
     private val mapColors = ByteArray(screen.width * screen.height)
+    private val frameColors = ByteArray(screen.width * screen.height) // last full frame, without the cursor
 
     @Volatile var active = false
         private set
@@ -45,30 +46,31 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     // ---------------------------------------------------------- mouse (head rotation while seated)
     private var lastYaw = Float.NaN
     private var lastPitch = 0f
-    private var recentring = 0 // packets left to wait for a re-centre to arrive
+    private var shift = 0f   // pitch we asked the client to subtract, until we see it applied
+    private var shiftWait = 0
 
     /**
      * The client's head rotation, sent every tick because the player is seated. The view comes from
      * the camera entity, so the rotation is free to act as a mouse. Called on the network thread.
      */
     fun look(yaw: Float, pitch: Float) {
-        if (recentring > 0) {
-            // ignore packets until the client has applied our re-centre (pitch back near 0)
-            if (kotlin.math.abs(pitch) < 3f || --recentring == 0) { recentring = 0; lastYaw = yaw; lastPitch = pitch }
-            return
-        }
         if (lastYaw.isNaN()) { lastYaw = yaw; lastPitch = pitch; return }
+        if (shift != 0f) {
+            // the re-centre is relative, so no movement is lost; spot the packet where it lands
+            if (kotlin.math.abs(pitch - (lastPitch - shift)) < kotlin.math.abs(pitch - lastPitch)) { lastPitch -= shift; shift = 0f }
+            else if (++shiftWait > 40) shift = 0f
+        }
         var dy = yaw - lastYaw
         while (dy > 180) dy -= 360
         while (dy < -180) dy += 360
         val dp = pitch - lastPitch
         lastYaw = yaw; lastPitch = pitch
         if (dy != 0f || dp != 0f) post { screen.mouse(dy.toDouble(), dp.toDouble()) }
-        // the client's pitch stops at +-90, so quietly turn it back to level before it gets there
-        if (kotlin.math.abs(pitch) > 50f) {
-            recentring = 20
+        // the client's pitch stops at +-90, so turn it back towards level before it gets there
+        if (shift == 0f && kotlin.math.abs(pitch) > 45f) {
+            shift = pitch; shiftWait = 0
             (player as org.bukkit.craftbukkit.entity.CraftPlayer).handle.connection.send(
-                net.minecraft.network.protocol.game.ClientboundPlayerRotationPacket(yaw, false, 0f, false))
+                net.minecraft.network.protocol.game.ClientboundPlayerRotationPacket(0f, true, -pitch, true))
         }
     }
 
@@ -102,8 +104,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         screenMap.spawn()
         if (d.screenZoom <= 0) screen.calibrate()
         active = true
-        val period = (1000 / plugin.config.getInt("fps", 10).coerceIn(2, 20)).toLong()
-        task = plugin.gameThreads.scheduleAtFixedRate(::loop, 0, period, TimeUnit.MILLISECONDS)
+        task = plugin.gameThreads.scheduleAtFixedRate(::loop, 0, TICK_MS, TimeUnit.MILLISECONDS)
     }
 
     /** Stop the game loop and remove the screen. Safe to call from any thread. */
@@ -119,17 +120,30 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         d.lastSeen = System.currentTimeMillis()
     }
 
+    private var ticks = 0L
+    private var drawnCursor = -1L
+
+    /**
+     * Runs every [TICK_MS] (as often as the client sends mouse movement). The game and the screen
+     * update at the configured fps; in between only the cursor is moved, which is cheap.
+     */
     private fun loop() {
         try {
-            val dt = 1.0 / plugin.config.getInt("fps", 10).coerceIn(2, 20)
             while (true) inbox.poll()?.invoke() ?: break
             if (!active) return
-            game.update(dt)
-            screen.update(dt)
-            d.lastSeen = System.currentTimeMillis()
-            if (frames++ % 10 == 0L) game.checkAchievements()
-            screen.render()
-            Palette.convert(screen.pixels, mapColors)
+            val every = (1000 / TICK_MS / plugin.config.getInt("fps", 10).coerceIn(2, 1000 / TICK_MS.toInt())).toInt()
+            if (ticks++ % every == 0L) {
+                val dt = every * TICK_MS / 1000.0
+                game.update(dt)
+                screen.update(dt)
+                d.lastSeen = System.currentTimeMillis()
+                if (frames++ % 10 == 0L) game.checkAchievements()
+                screen.render()
+                Palette.convert(screen.pixels, frameColors)
+            } else if (screen.cursorKey() == drawnCursor) return
+            System.arraycopy(frameColors, 0, mapColors, 0, mapColors.size)
+            screen.overlayCursor(mapColors)
+            drawnCursor = screen.cursorKey()
             map?.push(mapColors)
         } catch (e: Throwable) {
             plugin.logger.log(Level.WARNING, "TapX frame failed for ${player.name}", e)
@@ -207,5 +221,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     companion object {
         const val SCREEN_COLS = 7
         const val SCREEN_ROWS = 4
+        /** Mouse movement arrives once per client tick, so the cursor is redrawn this often. */
+        const val TICK_MS = 50L
     }
 }

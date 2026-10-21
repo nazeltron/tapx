@@ -58,13 +58,19 @@ async function key(name, hold = 120) {
   bot._client.write('player_input', { inputs: on });
   await sleep(250);
 }
-async function click(wait = 120) { bot._client.write('arm_animation', { hand: 0 }); await sleep(wait); }
+// A spectator client doesn't swing: a left-click on the screen is an attack on the frame it looks at.
+let clicks = 0;
+async function click(wait = 120) {
+  const target = Number(Object.keys(frames)[0]);
+  bot._client.write('use_entity', { target, mouse: 1, sneaking: false }); clicks++;
+  await sleep(wait);
+}
 let camera = null;
 // Mouse: a seated vanilla client sends its head rotation every tick; we do the same.
 let yaw = 180, pitch = 0;
 async function mouse(dYaw, dPitch, steps = 6) {
   for (let i = 0; i < steps; i++) {
-    yaw += dYaw / steps; pitch += dPitch / steps;
+    yaw += dYaw / steps; pitch = Math.max(-90, Math.min(90, pitch + dPitch / steps));
     bot._client.write('look', { yaw, pitch, flags: { onGround: false, hasHorizontalCollision: false } });
     await sleep(50);
   }
@@ -74,6 +80,12 @@ async function mouse(dYaw, dPitch, steps = 6) {
 let cx = 448, cy = 256;
 async function pointAt(x, y) { await mouse((x - cx) / 7, (y - cy) / 7); cx = x; cy = y; }
 bot._client.on('camera', p => { camera = p.cameraId; });
+// Like the vanilla client: apply the server's (relative) rotation and echo it straight back.
+let recentres = 0;
+bot._client.on('player_rotation', p => {
+  yaw = p.relativeYaw ? yaw + p.yaw : p.yaw; pitch = p.relativePitch ? pitch + p.pitch : p.pitch; recentres++;
+  bot._client.write('look', { yaw, pitch, flags: { onGround: false, hasHorizontalCollision: false } });
+});
 bot.once('spawn', async () => {
   try {
     await sleep(4500); // auto-start: no /tapx needed
@@ -91,8 +103,10 @@ bot.once('spawn', async () => {
     shot('05-shop');
     await pointAt(512 + 378 - 60, 200);                      // hover a shop button
     shot('06-hover');
-    await mouse(0, 80, 12);                                   // look way down: forces a re-centre, cursor stays sane
-    await mouse(0, -10); shot('07-after-recentre');
+    await pointAt(448, 256); shot('07-centre');
+    await mouse(0, 70, 14); await mouse(0, -70, 14);          // far down and back: re-centres, cursor must end where it began
+    shot('08-after-recentre');
+    console.log('re-centres', recentres, 'pitch now', pitch.toFixed(1));
     console.log('total map packets', mapPackets, 'bytes', mapBytes);
   } catch (e) { console.log('TEST ERROR', e); }
   bot.quit(); setTimeout(() => process.exit(0), 500);
