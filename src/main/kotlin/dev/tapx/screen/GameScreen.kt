@@ -31,6 +31,8 @@ interface ScreenHost {
     val allowExit: Boolean
     /** Change how big the screen looks (moves the camera); 1.0 = sized for the configured FOV. */
     fun setZoom(zoom: Double)
+    /** Show the web store link (a dialog with an "open store" button). */
+    fun openStore() {}
 }
 
 enum class Sfx { HIT, CRIT, KILL, BOSS, BOSS_KILL, LEVEL_UP, BUY, CLICK, ERROR, THUNDER, SPELL, PET, CHEST, LEGENDARY, EQUIP, WISP, FAIL, ACHIEVEMENT, COIN }
@@ -205,6 +207,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         t += dt
         idle += dt
         tutorialUpdate()
+        val ev = dev.tapx.ServerEvents.label()
+        if (ev != null && ev != lastEvent) { showBanner("ADMIN ABUSE: $ev!", hex("ff8adf")); host.sfx(Sfx.ACHIEVEMENT) }
+        lastEvent = ev
         for (k in held.keys.toList()) {
             if ((k == "up" || k == "down") && overList()) { scrollBy((if (k == "up") -520 else 520) * dt); continue }
             val left = held[k]!! - dt
@@ -337,6 +342,21 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             bolt = 0.45; flash = 0.7; flashColor = hex("d8f0ff"); shake = 14.0
             val (cx, cy) = monsterCenter()
             floater(fmt(damage), cx, cy - 40, hex("8ad8ff"), 3, vx = 0.0, vy = -80.0, life = 1.4)
+        } else if (id == "meteor") {
+            host.sfx(Sfx.BOSS_KILL)
+            flash = 0.8; flashColor = hex("ffb050"); shake = 18.0
+            val (cx, cy) = monsterCenter()
+            repeat(3) { burst(cx + Random.nextDouble(-40.0, 40.0), cy + Random.nextDouble(-40.0, 20.0), hex("ff7a2a"), 14, 320.0, 7.0) }
+            floater(fmt(damage), cx, cy - 50, hex("ffb050"), 3, vx = 0.0, vy = -80.0, life = 1.5)
+        } else if (id == "execute") {
+            host.sfx(Sfx.CRIT)
+            flash = 0.5; flashColor = hex("ff3a3a"); shake = 10.0
+            val (cx, cy) = monsterCenter()
+            slashes += Slash(cx, cy, -0.7, 0.35, true); slashes += Slash(cx, cy, 0.7, 0.35, true)
+            floater(fmt(damage), cx, cy - 50, hex("ff5a5a"), 3, vx = 0.0, vy = -80.0, life = 1.4)
+        } else if (id == "timewarp") {
+            flash = 0.5; flashColor = hex("8ad8ff")
+            showBanner("TIME WARP! +${skillPower("timewarp", g.skillLvl("timewarp")).toInt()}s", hex("8ad8ff"))
         } else showBanner(SKILLS.first { it.id == id }.name.uppercase() + "!", hex("ffe08a"))
     }
 
@@ -420,6 +440,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     // The right panel changes far less often than the battle: it is redrawn when something may have
     // changed (input, hover, pop-ups) and at least every 4th frame; otherwise last frame's copy is reused.
     private var frameCorners: java.awt.Shape? = null
+    private var lastEvent: String? = null
     private var panelDirty = true
     private var frameNo = 0L
     private var lastSelected: String? = null
@@ -711,15 +732,16 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         Art.coin(gfx, gx, gy, 12.0)
         text(fmt(d.gold), (gx + 18).toInt(), (gy - 7).toInt(), Color.WHITE, 2)
 
-        // mana + spells (left column)
-        val mx = 10.0; val my = 108.0
-        gfx.fill(rrect(mx - 1, my - 1, 46.0, 10.0, 5.0), hex("0e1020"))
+        // spell bar along the bottom, with the mana bar above it
+        val sx0 = (BW - SKILLS.size * 40 + 4) / 2
+        val mx = sx0.toDouble(); val my = 424.0; val mw = SKILLS.size * 40 - 4.0
+        gfx.fill(rrect(mx - 2, my - 2, mw + 4, 14.0, 7.0), hex("0e1020"))
         gfx.save {
-            paint = GradientPaint(0f, my.toFloat(), hex("9ad8ff"), 0f, (my + 8).toFloat(), hex("2a6ad0"))
-            fill(rrect(mx, my, max(8.0, 44.0 * (d.mana / g.maxMana())), 8.0, 4.0))
+            paint = GradientPaint(0f, my.toFloat(), hex("9ad8ff"), 0f, (my + 10).toFloat(), hex("2a6ad0"))
+            fill(rrect(mx, my, max(10.0, mw * (d.mana / g.maxMana())), 10.0, 5.0))
         }
-        text("${floor(d.mana).toInt()}", 32, (my - 10).toInt(), hex("8ad8ff"), 1, 1)
-        SKILLS.forEachIndexed { i, sk -> skillButton(sk, 10, 120 + i * 46) }
+        text("MANA ${floor(d.mana).toInt()}/${g.maxMana()}", BW / 2, my.toInt() + 1, Color.WHITE, 1, 1)
+        SKILLS.forEachIndexed { i, sk -> skillButton(sk, sx0 + i * 40, 442) }
 
         // buffs (right column)
         var yy = 96
@@ -744,25 +766,26 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
 
     private fun skillButton(sk: Skill, x: Int, y: Int) {
+        val s = 36.0
         val lvl = g.skillLvl(sk.id)
         val active = d.buffs[sk.id]
         val ready = lvl > 0 && active == null && d.mana >= sk.mana
         gfx.save {
-            Art.icon(this, sk.id, x.toDouble(), y.toDouble(), 40.0)
-            if (lvl == 0 || (!ready && active == null)) { alpha(0.65); fill(rrect(x.toDouble(), y.toDouble(), 40.0, 40.0, 6.0), Color(20, 20, 30)) }
+            Art.icon(this, sk.id, x.toDouble(), y.toDouble(), s)
+            if (lvl == 0 || (!ready && active == null)) { alpha(0.65); fill(rrect(x.toDouble(), y.toDouble(), s, s, 7.0), Color(20, 20, 30)) }
         }
         if (active != null) {
             val f = active / g.spellDuration()
-            gfx.save { alpha(0.45); fill(Rectangle2D.Double(x.toDouble(), y + 40 * (1 - f), 40.0, 40 * f), hex("ffe08a")) }
-            gfx.stroke = stroke(2f); gfx.color = hex("ffd23a"); gfx.draw(rrect(x.toDouble(), y.toDouble(), 40.0, 40.0, 6.0))
-            text("${ceil(active).toInt()}", x + 38, y + 30, Color.WHITE, 1, 2)
-        } else if (lvl == 0) text("LV${sk.req}", x + 20, y + 16, hex("c0c4d0"), 1, 1)
-        else text("${sk.mana}", x + 38, y + 30, hex("8ad8ff"), 1, 2)
-        if (hovered(BX + x, BY + y, 40, 40)) {
-            footer = if (lvl == 0) "${sk.name}: learn it in the Hero tab (tap level ${sk.req})" else "${sk.name}: ${skillDesc(sk.id, lvl)} (${sk.mana} mana)"
-            gfx.stroke = stroke(2f); gfx.color = Color.WHITE; gfx.draw(rrect(x.toDouble(), y.toDouble(), 40.0, 40.0, 6.0))
+            gfx.save { alpha(0.45); fill(Rectangle2D.Double(x.toDouble(), y + s * (1 - f), s, s * f), hex("ffe08a")) }
+            gfx.stroke = stroke(2f); gfx.color = hex("ffd23a"); gfx.draw(rrect(x.toDouble(), y.toDouble(), s, s, 7.0))
+            text("${ceil(active).toInt()}", x + 34, y + 26, Color.WHITE, 1, 2)
+        } else if (lvl == 0) text("${sk.req}", x + 18, y + 14, hex("c0c4d0"), 1, 1)
+        else text("${sk.mana}", x + 34, y + 26, hex("8ad8ff"), 1, 2)
+        if (hovered(BX + x, BY + y, s.toInt(), s.toInt())) {
+            footer = if (lvl == 0) "${sk.name}: learn it in the Hero tab (hero level ${sk.req})" else "${sk.name}: ${skillDesc(sk.id, lvl)} (${sk.mana} mana)"
+            gfx.stroke = stroke(2f); gfx.color = Color.WHITE; gfx.draw(rrect(x.toDouble(), y.toDouble(), s, s, 7.0))
         }
-        hit(BX + x, BY + y, 40, 40, "cast:${sk.id}") { if (!g.castSkill(sk.id)) host.sfx(Sfx.ERROR) }
+        hit(BX + x, BY + y, s.toInt(), s.toInt(), "cast:${sk.id}") { if (!g.castSkill(sk.id)) host.sfx(Sfx.ERROR) }
     }
 
     // ================================================================== right panel
@@ -898,9 +921,11 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     /** A standard upgrade row with an icon, title, two lines of text and a buy button. */
     private fun upgradeRow(
         id: String, icon: (Int, Int) -> Unit, title: String, line1: String, line2: String,
-        cost: String?, costIcon: String, label: String, enabled: Boolean, glow: Boolean = false, hover: String = "", action: () -> Boolean,
+        cost: String?, costIcon: String, label: String, enabled: Boolean, glow: Boolean = false, hover: String = "",
+        inspect: (() -> Unit)? = null, action: () -> Boolean,
     ) = Row(52) { x, y, w ->
         val hov = hovered(x, y, w, 50)
+        if (inspect != null) hit(x, y, w - 108, 49, "inspect:$id") { host.sfx(Sfx.CLICK); inspect() }
         gfx.blit(Widgets.card(w, 49, hov), x, y)
         gfx.blit(Widgets.iconFrame(), x + 2, y + 2)
         icon(x + 4, y + 4)
@@ -942,7 +967,16 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             "Prestige", if (canP) "+${fmt(g.relicsFor(d.maxStage))} relics" else "Reach stage $PRESTIGE_STAGE", "Restart for relics",
             null, "", if (canP) "PRESTIGE" else "STAGE $PRESTIGE_STAGE", canP, true,
             "Go back to stage 1 to earn relics. You keep gems, artifacts, gear, pets and achievements.") { confirmPrestige(); true }
-        rows += section("SPELLS - CAST THEM FROM THE BATTLE")
+        rows += section("TRAINING - RESETS WHEN YOU PRESTIGE")
+        for (t in TRAINING) {
+            val lvl = g.tr(t.id)
+            val maxed = lvl >= t.max
+            val c = trainingCost(t, lvl)
+            rows += upgradeRow("train:${t.id}", { x, y -> Art.icon(gfx, t.icon, x.toDouble(), y.toDouble(), 42.0) },
+                "${t.name} LV $lvl/${t.max}", if (lvl > 0) t.desc(lvl) else "Not trained yet", if (maxed) "Max level" else "Next: ${t.desc(lvl + 1)}",
+                if (maxed) null else fmt(c), "coin", if (maxed) "MAX" else "TRAIN", !maxed && d.gold >= c, true) { g.buyTraining(t.id) }
+        }
+        rows += section("SPELLS - CAST THEM FROM THE SPELL BAR")
         for (sk in SKILLS) {
             val lvl = g.skillLvl(sk.id)
             val maxed = lvl >= SKILL_MAX
@@ -1043,6 +1077,14 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     private fun shopRows(): List<Row> {
         val rows = ArrayList<Row>()
+        rows += Row(60) { x, y, w ->
+            val hov = hovered(x, y + 3, w, 52)
+            gfx.blit(Widgets.button(w, 52, if (hov) hex("ff9a3a") else hex("f07a1a")), x, y + 3)
+            Art.gem(gfx, x + 28.0, y + 26.0, 13.0); Art.gem(gfx, x + w - 28.0, y + 26.0, 13.0)
+            text("GET GEMS & RANKS", x + w / 2, y + 11, Color.WHITE, 2, 1)
+            text(storeHost(), x + w / 2, y + 33, hex("fff0b0"), 1, 1)
+            hit(x, y + 3, w, 52, "store") { host.sfx(Sfx.CLICK); host.openStore() }
+        }
         rows += section("FREE CHEST - EVERY 4 HOURS")
         val ready = g.freeChestReady()
         rows += upgradeRow("free", { x, y -> Art.chest(gfx, null, x + 21.0, y + 24.0, 0.7) },
@@ -1058,9 +1100,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                     val have = rankIndex(d.rank) >= rankIndex(r.key)
                     val cost = g.rankUpgradeCost(r)
                     rows += upgradeRow("rank:${r.key}", { x, y -> shopIcon("rank:${r.key}", x, y) },
-                        "${r.name} RANK", rankPerks(r), when { d.rank == r.key -> "Your rank"; have -> "Included"; d.rank != null -> "Upgrade: pay the difference"; else -> "Chat & tab prefix, daily x${r.dailyBonus}" },
+                        "${r.name} RANK", rankPerks(r), when { d.rank == r.key -> "Your rank - click to see rewards"; have -> "Included - click to see rewards"; else -> "Click to see all ${rankRewards(r).size} rewards" },
                         if (have) null else cost.toString(), "gem", if (have) "OWNED" else if (d.rank != null) "UPGRADE" else "BUY",
-                        !have && d.gems >= cost, !have) {
+                        !have && d.gems >= cost, !have, inspect = { modal = RankModal(r) }) {
                         val msg = g.buyRank(r.key); if (msg != null) { showBanner(msg, hex(r.hex)); host.sfx(Sfx.LEGENDARY) }; msg != null
                     }
                 }
@@ -1071,7 +1113,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                     val items = g.openChest(c.id); if (items != null) modal = LootModal(c.name.uppercase(), items, null); items != null
                 }
                 "skin" -> for (sk in SKINS) {
-                    val owned = sk.id in d.skins
+                    val owned = sk.id in d.skins || g.rankSkin(sk.id)
                     val wearing = d.skin == sk.id
                     rows += upgradeRow("skin:${sk.id}", { x, y -> Art.heroPortrait(gfx, sk.apply(HERO_LOOK), x.toDouble(), y.toDouble(), 42.0, hex("c9a02a")) },
                         sk.name, "Hero outfit (looks only)", if (wearing) "Wearing" else if (owned) "Owned" else "",
@@ -1124,12 +1166,14 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         return rows
     }
 
+    private fun storeHost() = (dev.tapx.Cmds.storeUrl()).removePrefix("https://").removePrefix("http://").trimEnd('/').uppercase()
+
     private fun shopIcon(key: String, x: Int, y: Int) {
         when {
             key.startsWith("rank:") -> {
                 val r = rankDef(key.removePrefix("rank:")) ?: return
                 gfx.blit(Widgets.button(42, 42, hex(r.hex).shade(-0.15), lip = false), x, y)
-                text(r.name.take(3), x + 21, y + 17, Color.WHITE, 1, 1)
+                text(if (r.name.length <= 5) r.name else r.name.take(3), x + 21, y + 17, Color.WHITE, 1, 1)
                 return
             }
         }
@@ -1219,6 +1263,29 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val msg = g.claimQuestBonus(); if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff")); msg != null
         }
         return rows
+    }
+
+    // ------------------------------------------------------------------ rank details
+    private inner class RankModal(val r: Rank) : Modal("${r.name} RANK", 470, 410) {
+        override fun body() {
+            val have = rankIndex(d.rank) >= rankIndex(r.key)
+            val c = hex(r.hex)
+            gfx.blit(Widgets.button(64, 64, c.shade(-0.15), lip = false), x + 24, y + 40)
+            if (r.name.length <= 3) text(r.name, x + 56, y + 62, Color.WHITE, 2, 1) else text(r.name, x + 56, y + 66, Color.WHITE, 1, 1)
+            text(if (have) "YOU HAVE THIS RANK" else "${r.gems} GEMS" + if (d.rank != null && !have) " (upgrade: ${g.rankUpgradeCost(r)})" else "", x + 104, y + 48, if (have) hex("7aff7a") else hex("6ae4ff"), 2)
+            text("Includes every rank below it. Upgrading costs only the difference.", x + 104, y + 76, hex("c8cbd8"))
+            rankRewards(r).forEachIndexed { i, line ->
+                val ry = y + 116 + i * 20
+                gfx.fill(circle(x + 36.0, ry + 4.0, 7.0), hex("3a9a3a"))
+                gfx.stroke = stroke(2.2f); gfx.color = Color.WHITE
+                gfx.draw(path { moveTo(x + 32.5, ry + 4.0); lineTo(x + 35.5, ry + 7.0); lineTo(x + 40.0, ry + 0.5) })
+                text(line, x + 52, ry, Color.WHITE)
+            }
+            if (!have) button(x + 24, y + h - 48, 200, 34, "BUY FOR ${g.rankUpgradeCost(r)} GEMS", hex("f08a1a"), d.gems >= g.rankUpgradeCost(r), id = "m:buyrank") {
+                val msg = g.buyRank(r.key); if (msg != null) { close(); showBanner(msg, c); host.sfx(Sfx.LEGENDARY) }
+            }
+            button(x + w - 224, y + h - 48, 200, 34, "GET GEMS ONLINE", hex("3a7ad0")) { host.openStore() }
+        }
     }
 
     // ------------------------------------------------------------------ daily wheel

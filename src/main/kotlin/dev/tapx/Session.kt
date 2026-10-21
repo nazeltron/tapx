@@ -191,19 +191,19 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     override fun sfx(s: Sfx) {
         if (!d.sound) return
         val now = System.currentTimeMillis()
-        if (now - (lastSound[s] ?: 0) < 60) return
+        if (now - (lastSound[s] ?: 0) < (if (s == Sfx.COIN || s == Sfx.HIT) 120 else 60)) return
         lastSound[s] = now
         val (sound, vol, pitch) = when (s) {
-            Sfx.HIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.3f, 1.5f)
-            Sfx.CRIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.6f, 1.0f)
-            Sfx.KILL -> Triple(Sound.ENTITY_GENERIC_DEATH, 0.3f, 1.4f)
-            Sfx.COIN -> Triple(Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.25f, 1.6f)
-            Sfx.BOSS -> Triple(Sound.ENTITY_ENDER_DRAGON_GROWL, 0.3f, 1.3f)
+            Sfx.HIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_WEAK, 0.25f, 1.2f)
+            Sfx.CRIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.4f, 1.1f)
+            Sfx.KILL -> Triple(Sound.ENTITY_PLAYER_ATTACK_STRONG, 0.35f, 0.9f)
+            Sfx.COIN -> Triple(Sound.ENTITY_ITEM_PICKUP, 0.18f, 1.3f)
+            Sfx.BOSS -> Triple(Sound.ENTITY_RAVAGER_ROAR, 0.35f, 1.0f)
             Sfx.BOSS_KILL -> Triple(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.5f, 1.2f)
             Sfx.LEVEL_UP -> Triple(Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.0f)
-            Sfx.BUY -> Triple(Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 1.6f)
-            Sfx.CLICK -> Triple(Sound.UI_BUTTON_CLICK, 0.4f, 1.2f)
-            Sfx.ERROR -> Triple(Sound.ENTITY_VILLAGER_NO, 0.4f, 1.0f)
+            Sfx.BUY -> Triple(Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.7f, 1.1f)
+            Sfx.CLICK -> Triple(Sound.UI_BUTTON_CLICK, 0.25f, 1.3f)
+            Sfx.ERROR -> Triple(Sound.BLOCK_NOTE_BLOCK_BASS, 0.4f, 0.7f)
             Sfx.THUNDER -> Triple(Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.35f, 1.4f)
             Sfx.SPELL -> Triple(Sound.ENTITY_EVOKER_CAST_SPELL, 0.5f, 1.2f)
             Sfx.PET -> Triple(Sound.ENTITY_FOX_AMBIENT, 0.7f, 1.4f)
@@ -211,7 +211,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
             Sfx.LEGENDARY -> Triple(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.0f)
             Sfx.EQUIP -> Triple(Sound.ITEM_ARMOR_EQUIP_DIAMOND, 0.6f, 1.0f)
             Sfx.WISP -> Triple(Sound.ENTITY_ALLAY_ITEM_GIVEN, 0.7f, 1.2f)
-            Sfx.FAIL -> Triple(Sound.ENTITY_WITHER_SKELETON_AMBIENT, 0.4f, 0.8f)
+            Sfx.FAIL -> Triple(Sound.BLOCK_BEACON_DEACTIVATE, 0.5f, 0.9f)
             Sfx.ACHIEVEMENT -> Triple(Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.4f, 1.5f)
         }
         // Bukkit calls belong on the main thread.
@@ -227,6 +227,8 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     override fun leaderboard(): List<TopEntry> = plugin.leaderboard()
 
     override val allowExit: Boolean get() = player.hasPermission("tapx.admin")
+
+    override fun openStore() { plugin.openStore(player) }
 
     override fun setZoom(zoom: Double) {
         plugin.server.scheduler.runTask(plugin, Runnable { plugin.arcade.applyZoom(player, zoom) })

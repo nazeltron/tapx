@@ -205,8 +205,9 @@ object Essentials : Listener {
             rules.forEachIndexed { i, r -> c.sender.sayRaw(" <yellow>${i + 1}. <white>$r") }
         }
         Cmds.register("store", listOf("shop", "buy", "donate"), perm = null, usage = "/store", tab = { emptyList() }) { c ->
-            val url = plugin.config.getString("store-url", "")!!.ifBlank { "Ask staff for the store link" }
-            c.sender.say("<aqua><b>STORE</b> <gray>» <click:open_url:'$url'><white><u>$url</u></white></click> <gray>(gems, ranks and gamepasses)")
+            val p = c.player
+            if (p != null) plugin.openStore(p)
+            else c.sender.say("<aqua><b>STORE</b> <gray>» <white>${Cmds.storeUrl()}")
         }
 
         // moderation

@@ -382,6 +382,28 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         if (!found) { pendingGems.merge(name.lowercase(), amount, Long::plus); savePending() }
     }
 
+    /** The web store as a native dialog with an "Open Store" button (plus a chat link). Any thread. */
+    @Suppress("UnstableApiUsage")
+    fun openStore(p: Player) = server.scheduler.runTask(this, Runnable {
+        val url = Cmds.storeUrl()
+        p.sayRaw("$PREFIX<gold><b>STORE</b> <gray>» <click:open_url:'$url'><aqua><u>$url</u></aqua></click> <gray>(gems, ranks and gamepasses)")
+        runCatching {
+            val dialog = io.papermc.paper.dialog.Dialog.create { f ->
+                f.empty()
+                    .base(io.papermc.paper.registry.data.dialog.DialogBase.builder(mm("<gold><b>TAPX STORE"))
+                        .body(listOf(
+                            io.papermc.paper.registry.data.dialog.body.DialogBody.plainMessage(mm("<white>Get <aqua>gems</aqua>, <gold>ranks</gold> and <green>gamepasses</green> and support the server!")),
+                            io.papermc.paper.registry.data.dialog.body.DialogBody.plainMessage(mm("<gray>Purchases arrive in the game automatically.")),
+                        )).build())
+                    .type(io.papermc.paper.registry.data.dialog.type.DialogType.multiAction(listOf(
+                        io.papermc.paper.registry.data.dialog.ActionButton.create(mm("<green><b>Open Store"), mm("<gray>$url"), 200,
+                            io.papermc.paper.registry.data.dialog.action.DialogAction.staticAction(net.kyori.adventure.text.event.ClickEvent.openUrl(url))),
+                    )).build())
+            }
+            p.showDialog(dialog)
+        }.onFailure { logger.warning("Couldn't show the store dialog: $it") }
+    })
+
     /** A store rank changed: LuckPerms group (optional) and the tab list. Any thread. */
     fun rankChanged(p: Player, rank: String?) = server.scheduler.runTask(this, Runnable {
         if (config.getBoolean("ranks.luckperms", true) && server.pluginManager.isPluginEnabled("LuckPerms")) {

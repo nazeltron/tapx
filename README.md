@@ -30,6 +30,7 @@ so the smooth, anti-aliased art and gradients still come through (and still area
 
 **No crosshair**: players sit invisible, in adventure mode, on the camera entity (so the client
 draws no hotbar, hearts or hand, and the mouse wheel reaches the server as hotbar-slot changes).
+Only their client is told it is in creative mode (the server keeps adventure), so no XP/locator bar is drawn.
 While playing they get a tiny resource pack that blanks the crosshair, XP bar and locator bar; the plugin serves
 it on the Minecraft port itself, so there's nothing to set up. Players are asked once to accept it.
 Behind a proxy (Velocity/BungeeCord), upload `plugins/TapX/tapx-screen-pack.zip` somewhere and set
@@ -47,7 +48,7 @@ spot (64 blocks apart). Leaving the game restores the player's game mode and loc
 
 - Tap monsters; defeat 8, then beat the **boss** before its timer runs out. Every 10 stages is a new world.
 - 8 worlds; every 25th stage is a **Titan Lord** (3x HP, big gold and relic reward, small gem chance)
-- **Hero** tab: level up tap damage, prestige, learn 6 mana **spells** (cast from the left of the battle)
+- **Hero** tab: level up tap damage, prestige, learn 12 mana **spells** (cast from the spell bar under the battle) and buy **training** upgrades (sword, leadership, precision, treasure, titan hunter, meditation; reset on prestige). Hero damage doubles only every 50 levels
 - **Allies**: 16 heroes; each one attacks once per second (and they keep earning while you're away)
 - **Skills**: a 16-node skill tree in 4 branches (Knight, Warlord, Sorcerer, Rogue); points from stages and prestige
 - **Gear**: weapons, helmets, armor and auras from chests; they change how your hero looks
@@ -90,7 +91,7 @@ join). Every change is logged to `plugins/TapX/gems.log`.
 
 ## Server features (3.1)
 
-**Events ("ADMIN ABUSE")** - server-wide boosts with a rainbow boss bar, titles and a banner on the game screen.
+**Events ("ADMIN ABUSE")** - server-wide boosts shown on the game screen itself (a banner, then a strip under the HP bar), plus a chat announcement.
 | Command | What it does |
 | --- | --- |
 | `/event start <gold\|damage\|relics\|mana\|luck\|all> <minutes> [multiplier]` | Start a boost (default x2) |
@@ -99,8 +100,8 @@ join). Every change is logged to `plugins/TapX/gems.log`.
 | `/event giveaway <gems> [winners]` | Random online winners after a 3-2-1 countdown |
 | `/events` | Anyone: what's running |
 
-**Store (everything costs gems)** - ranks VIP 500, PRO 1200, MVP 3000, ELITE 6000, TITAN 15000, LEGEND 35000
-(more gold and damage, auto taps, longer offline earnings, bigger daily rewards, chat/tab tags; upgrades
+**Store (everything costs gems)** - a big GET GEMS & RANKS button at the top of the shop opens a link to the web store (`store-url`, default tapx.paynow.store); ranks VIP 500, PRO 1200, MVP 3000, ELITE 6000, TITAN 15000, LEGEND 35000
+(more gold and damage, auto taps, longer offline earnings, bigger daily rewards, extra mana, faster free chests, extra wheel spins, login-calendar gems, free hero skins on ELITE+, chat/tab tags; click a rank in the shop to see every reward; upgrades
 cost only the difference; LuckPerms groups of the same names are given if LuckPerms is installed), gamepasses
 (Global x2, Relic Hunter, Ally Fury, Crit Master, Boss Slayer, Pet Trainer, Arcane Flow, Lucky Charm, Auto Boss,
 plus the earlier ones) and a 25%-off bundle of every pass you don't own.

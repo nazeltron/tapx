@@ -20,6 +20,10 @@ fun CommandSender.sayRaw(text: String) = sendMessage(mm(text))
 object Cmds {
     lateinit var plugin: TapXPlugin
 
+    /** The web store address (config store-url). */
+    fun storeUrl(): String = if (::plugin.isInitialized) plugin.config.getString("store-url", "")!!.ifBlank { DEFAULT_STORE } else DEFAULT_STORE
+    const val DEFAULT_STORE = "https://tapx.paynow.store"
+
     class Ctx(val sender: CommandSender, val args: List<String>) {
         val player get() = sender as? Player
         fun arg(i: Int) = args.getOrNull(i)

@@ -1,7 +1,5 @@
 package dev.tapx
 
-import net.kyori.adventure.bossbar.BossBar
-import net.kyori.adventure.text.Component
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
 import org.bukkit.Sound
@@ -13,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Server-wide boosts ("ADMIN ABUSE", ported from DrillSim's /event): while one runs, everyone's
  * gold, damage, relics, mana or luck is multiplied. Started by admins (or the web store / piggy bank
- * from the console), shown with a rainbow boss bar, titles, chat and a banner on the game screen.
+ * from the console), announced in chat and shown on the game screen (a banner, then a strip).
  * Events survive restarts.
  */
 object ServerEvents {
@@ -29,9 +27,6 @@ object ServerEvents {
     private val active = ConcurrentHashMap<String, Ev>()
     private var plugin: TapXPlugin? = null
     private lateinit var file: File
-    private val bar = BossBar.bossBar(Component.empty(), 1f, BossBar.Color.PURPLE, BossBar.Overlay.PROGRESS)
-    private var barShown = false
-    private var tick = 0
 
     /** The multiplier for [key] right now (1 when nothing runs). Safe from any thread. */
     fun mult(key: String): Double {
@@ -88,9 +83,8 @@ object ServerEvents {
             "",
         )
         for (l in lines) Bukkit.broadcast(mm(l))
-        val title = Title.title(mm("<b>${rainbow("ADMIN ABUSE")}</b>"), mm(rainbow(label)),
-            Title.Times.times(Duration.ofMillis(300), Duration.ofSeconds(3), Duration.ofMillis(600)))
-        for (pl in Bukkit.getOnlinePlayers()) { pl.showTitle(title); pl.playSound(pl.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.2f) }
+        // shown on the game screen itself (a banner, then a strip under the HP bar); no boss bar or title
+        for (pl in Bukkit.getOnlinePlayers()) pl.playSound(pl.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.2f)
     }
 
     /** Turn an event on without any server (for the preview renderer). */
@@ -115,18 +109,6 @@ object ServerEvents {
                 for (pl in Bukkit.getOnlinePlayers()) pl.playSound(pl.location, Sound.BLOCK_BEACON_DEACTIVATE, 0.8f, 1f)
             }
         }
-        val label = label()
-        if (label == null) {
-            if (barShown) { Bukkit.getOnlinePlayers().forEach { it.hideBossBar(bar) }; barShown = false }
-            return
-        }
-        tick++
-        val soonest = active.values.filter { it.end > now }.minBy { it.end }
-        bar.name(mm("<b>${rainbow("ADMIN ABUSE", tick * 25 % 360)}</b> <dark_gray>» ${rainbow(label, tick * 25 % 360)} <gray>(${fmtTime((soonest.end - now) / 1000.0)})"))
-        bar.progress(((soonest.end - now).toFloat() / soonest.length.coerceAtLeast(1)).coerceIn(0f, 1f))
-        bar.color(BossBar.Color.entries.filter { it != BossBar.Color.WHITE }[tick % 6])
-        Bukkit.getOnlinePlayers().forEach { it.showBossBar(bar) }
-        barShown = true
     }
 
     private fun parseTypes(s: String?): List<String>? = when (s?.lowercase()) {

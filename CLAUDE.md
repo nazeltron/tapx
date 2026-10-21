@@ -2,7 +2,7 @@
 
 Paper 1.21.11 plugin (Kotlin, Gradle + paperweight-userdev) — a Tap Titans-style idle game shown on a
 full-screen 2D map screen (fake glow item frames + map packets, per player, in a void "arcade" world).
-Players are auto-started in ADVENTURE mode, invisible, seated on an ItemDisplay camera entity with a
+Players are auto-started in ADVENTURE mode (the client alone is told CREATIVE, so no XP/locator bar), invisible, seated on an ItemDisplay camera entity with a
 raw SetCamera packet (camera != player, so no hotbar/hearts; client is sent an empty inventory and 0 XP
 so no hand/level). ScreenPack (served over HTTP on the MC port via a Paper channel listener) blanks the
 crosshair, XP bar and locator bar sprites (waypoint ranges are also zeroed while playing). A Netty handler reads input: clicks = ServerboundInteractPacket, mouse =
@@ -19,7 +19,7 @@ Look: polished mobile-game style (not pixel art): anti-aliased Java2D with gradi
 Rendering budget: `./gradlew preview` prints the frame cost (~7 ms render + ~2 ms palette). Characters
 (per quantised pose), pets, icons, coins, portraits, widgets and text are cached sprites; only visible
 list rows are drawn. Gems are the paid currency (`/tapx gems ...` for the
-web store). No resource pack. `web/` is the old
+web store). `web/` is the old
 browser prototype, reference only.
 
 Balance follows the browser prototype: compare `./gradlew sim` with `node web/tools/sim.js`.

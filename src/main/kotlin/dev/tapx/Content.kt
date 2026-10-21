@@ -1,5 +1,7 @@
 package dev.tapx
 
+import kotlin.math.pow
+
 // All static game content. Every visual is described by colours/shapes here and drawn in
 // code by screen/Art.kt onto the map screen.
 
@@ -8,6 +10,9 @@ const val BOSS_TIME = 30.0       // seconds to kill a boss
 const val PRESTIGE_STAGE = 25    // stage needed to prestige
 const val PET_CHARGE = 15        // taps per pet attack
 const val ALLY_COOLDOWN = 1.0    // seconds between each ally's attacks
+const val TAP_DMG_GROWTH = 1.035 // hero damage per level (times level, times milestones)
+const val TAP_COST_BASE = 8.0
+const val TAP_COST_GROWTH = 1.09 // hero level cost per level
 const val SKILL_MAX = 10
 const val FREE_CHEST_MS = 4L * 3600 * 1000
 const val DEAL_MS = 6L * 3600 * 1000
@@ -66,6 +71,23 @@ val HEROES = listOf(
 
 val HERO_LOOK = Look("#f6cba4", "#ffd23a", "spiky", "#2f3448", "#e8b33a", "#2a2a36", "sword", cape = "#d8302f")
 
+/** Hero tap damage doubles every 50 hero levels. */
+fun tapMilestoneMult(level: Int): Double = Math.pow(2.0, (level / 50).toDouble())
+
+// ---------------------------------------------------------------- training (gold upgrades, reset on prestige)
+class Training(val id: String, val name: String, val icon: String, val base: Double, val max: Int, val desc: (Int) -> String)
+
+val TRAINING = listOf(
+    Training("t_sword", "Sword Training", "blade", 5e3, 25) { "+${it * 10}% tap damage" },
+    Training("t_ally", "Leadership", "banner", 1e4, 25) { "+${it * 10}% ally damage" },
+    Training("t_crit", "Precision", "fang", 5e4, 20) { "+${"%.1f".format(it * 0.5)}% crit chance, +${it * 10}% crit damage" },
+    Training("t_gold", "Treasure Sense", "idol", 2e5, 25) { "+${it * 6}% gold" },
+    Training("t_boss", "Titan Hunter", "crown", 1e6, 20) { "+${it * 10}% boss damage" },
+    Training("t_mana", "Meditation", "crystal", 2e6, 15) { "+${it * 3} max mana, +${it * 5}% regen" },
+)
+
+fun trainingCost(t: Training, level: Int) = t.base * 4.0.pow(level)
+
 /** Ally damage multipliers unlocked at level milestones. */
 val HERO_MILESTONES = listOf(10 to 2.0, 25 to 2.0, 50 to 2.5, 75 to 2.0, 100 to 3.0, 150 to 2.5, 200 to 2.5, 300 to 3.0, 400 to 3.0, 500 to 4.0)
 
@@ -73,12 +95,18 @@ val HERO_MILESTONES = listOf(10 to 2.0, 25 to 2.0, 50 to 2.5, 75 to 2.0, 100 to 
 class Skill(val id: String, val name: String, val req: Int, val cost: Double, val mana: Int, val timed: Boolean)
 
 val SKILLS = listOf(
-    Skill("thunder", "Thunder Strike", 15, 250.0, 10, false),
-    Skill("frenzy", "Frenzy Blades", 40, 5e3, 25, true),
-    Skill("warcry", "War Cry", 75, 8e4, 30, true),
-    Skill("midas", "Midas Touch", 110, 1.5e6, 30, true),
-    Skill("berserk", "Berserk", 150, 3e7, 35, true),
-    Skill("eagle", "Eagle Eye", 200, 6e8, 40, true),
+    Skill("thunder", "Thunder Strike", 10, 250.0, 10, false),
+    Skill("frenzy", "Frenzy Blades", 25, 5e3, 25, true),
+    Skill("warcry", "War Cry", 50, 8e4, 30, true),
+    Skill("midas", "Midas Touch", 75, 1.5e6, 30, true),
+    Skill("berserk", "Berserk", 100, 3e7, 35, true),
+    Skill("eagle", "Eagle Eye", 130, 6e8, 40, true),
+    Skill("haste", "Haste", 160, 1.2e10, 35, true),
+    Skill("clone", "Shadow Clone", 200, 2.5e11, 40, true),
+    Skill("meteor", "Meteor Storm", 240, 5e12, 50, false),
+    Skill("execute", "Execute", 280, 1e14, 45, false),
+    Skill("petfrenzy", "Pet Frenzy", 330, 2e15, 30, true),
+    Skill("timewarp", "Time Warp", 380, 4e16, 35, false),
 )
 
 fun skillPower(id: String, level: Int): Double {
@@ -90,6 +118,12 @@ fun skillPower(id: String, level: Int): Double {
         "midas" -> 1.5 + 0.3 * l
         "berserk" -> 2.0 + 0.5 * l
         "eagle" -> 10.0 + 4 * l
+        "haste" -> 1.5 + 0.15 * l            // ally attack speed
+        "clone" -> 4.0 + 0.6 * l             // auto-taps per second, always critical
+        "meteor" -> 150.0 + 75 * l           // x tap damage
+        "execute" -> 4.0 + 0.75 * l          // % of the monster's max HP (bosses take a third)
+        "petfrenzy" -> maxOf(2.0, 6.0 - l / 3)  // taps per pet attack
+        "timewarp" -> 6.0 + 1.5 * l          // seconds added to a boss fight
         else -> 1.0
     }
 }
@@ -104,6 +138,12 @@ fun skillDesc(id: String, level: Int): String {
         "midas" -> "All gold x$x"
         "berserk" -> "Tap damage x$x"
         "eagle" -> "+$x% crit chance"
+        "haste" -> "Allies attack x$x as fast"
+        "clone" -> "+$x crit taps/sec"
+        "meteor" -> "Deal ${fmt(p)}x tap damage"
+        "execute" -> "Deal $x% of max HP"
+        "petfrenzy" -> "Pet strikes every ${p.toInt()} taps"
+        "timewarp" -> "+${x}s boss timer (in a boss fight)"
         else -> ""
     }
 }
@@ -352,16 +392,32 @@ val TITLES = listOf("the Vile", "the Huge", "the Unkind", "Muck Lord", "the Anci
 class Rank(
     val key: String, val name: String, val gems: Int, val color: String, val hex: String,
     val gold: Double, val damage: Double, val autoTaps: Int, val offlineHours: Int, val dailyBonus: Double,
+    val mana: Int, val chestHours: Double, val spins: Int, val loginGems: Int, val skin: String?,
 )
 
 val RANKS = listOf(
-    Rank("vip", "VIP", 500, "#ffaa33", "ffaa33", 1.15, 1.10, 0, 14, 1.25),
-    Rank("pro", "PRO", 1200, "#55ff55", "55ff55", 1.30, 1.20, 0, 16, 1.5),
-    Rank("mvp", "MVP", 3000, "#55ffff", "55ffff", 1.50, 1.35, 1, 18, 1.75),
-    Rank("elite", "ELITE", 6000, "#ff5555", "ff5555", 1.75, 1.50, 1, 20, 2.0),
-    Rank("titan", "TITAN", 15000, "#ff55ff", "ff55ff", 2.25, 1.75, 2, 24, 2.5),
-    Rank("legend", "LEGEND", 35000, "rainbow", "ffd23a", 3.0, 2.0, 3, 24, 3.0),
+    Rank("vip", "VIP", 500, "#ffaa33", "ffaa33", 1.25, 1.15, 0, 14, 1.25, 10, 3.5, 1, 0, null),
+    Rank("pro", "PRO", 1200, "#55ff55", "55ff55", 1.5, 1.3, 1, 16, 1.5, 15, 3.0, 1, 1, null),
+    Rank("mvp", "MVP", 3000, "#55ffff", "55ffff", 1.75, 1.5, 1, 18, 1.75, 20, 3.0, 2, 2, null),
+    Rank("elite", "ELITE", 6000, "#ff5555", "ff5555", 2.25, 1.75, 2, 20, 2.0, 25, 2.5, 2, 3, "shadow"),
+    Rank("titan", "TITAN", 15000, "#ff55ff", "ff55ff", 3.0, 2.25, 3, 24, 2.5, 35, 2.0, 3, 5, "royal"),
+    Rank("legend", "LEGEND", 35000, "rainbow", "ffd23a", 4.0, 3.0, 4, 24, 3.0, 50, 1.5, 3, 8, "golden"),
 )
+
+/** Every reward of a rank, one per line. */
+fun rankRewards(r: Rank): List<String> = buildList {
+    add("x${r.gold} gold from everything")
+    add("x${r.damage} ALL damage")
+    if (r.autoTaps > 0) add("+${r.autoTaps} automatic tap${if (r.autoTaps > 1) "s" else ""} every second")
+    add("Offline earnings up to ${r.offlineHours} hours")
+    add("Daily wheel & login rewards x${r.dailyBonus}")
+    add("${r.spins} daily wheel spin${if (r.spins > 1) "s" else ""}")
+    add("+${r.mana} max mana")
+    add("Free chest every ${if (r.chestHours % 1.0 == 0.0) r.chestHours.toInt().toString() else r.chestHours.toString()} hours")
+    if (r.loginGems > 0) add("+${r.loginGems} gems on day 7 of the login calendar")
+    r.skin?.let { s -> add("Free hero skin: ${SKINS.first { it.id == s }.name}") }
+    add("${r.name} tag in chat and the tab list" + if (r.color == "rainbow") " (rainbow!)" else "")
+}
 
 fun rankDef(key: String?) = RANKS.firstOrNull { it.key == key }
 fun rankIndex(key: String?) = RANKS.indexOfFirst { it.key == key }

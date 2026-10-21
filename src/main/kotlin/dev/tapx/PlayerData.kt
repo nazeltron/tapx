@@ -61,6 +61,12 @@ class PlayerData {
     var discordRewarded = false
     /** Promo codes already redeemed. */
     var promos = mutableSetOf<String>()
+
+    // --- added in 3.2
+    /** Training levels (gold upgrades, reset on prestige). */
+    var training = mutableMapOf<String, Int>()
+    /** Daily wheel spins used today (ranks give more). */
+    var wheelSpins = 0
 }
 
 class LoginData {

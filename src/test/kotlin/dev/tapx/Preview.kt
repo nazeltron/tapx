@@ -81,7 +81,7 @@ fun main(args: Array<String>) {
     tab(6); pointAt(830, 300); shot("quests")
     tab(6); clickAt(840, 112 + 26 + 64 + 52 + 22); step(3); shot("wheel"); clickAt(448, 256 + 170 - 30); step(12); shot("wheel-spin"); step(30); shot("wheel-result")
     screen.input(false, false, false, false, false, true, false, false); step(1)
-    tab(7); repeat(3) { screen.wheel(1) }; step(1); shot("shop-ranks"); repeat(3) { screen.wheel(-1) }
+    tab(7); repeat(5) { screen.wheel(1) }; step(1); shot("shop-ranks"); clickAt(640, 410); step(2); shot("rank-modal"); screen.input(false, false, false, false, false, true, false, false); step(1); repeat(3) { screen.wheel(-1) }
     tab(7); shot("shop")
     repeat(8) { clickAt(888 - 30, 6 + 88 + 10) }; pointAt(820, 300); shot("shop-scrolled")
     repeat(30) { clickAt(888 - 30, 6 + 88 + 10) }; pointAt(820, 300); shot("shop-skins")

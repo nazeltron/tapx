@@ -31,6 +31,7 @@ fun main(args: Array<String>) {
                 if (v > bestV) { bestV = v; best = h.id }
             }
             for (sk in SKILLS) if (g.d.tapLevel >= sk.req && g.skillLvl(sk.id) < 3 && g.d.gold >= g.skillCost(sk, g.skillLvl(sk.id)) * 3) g.buySkill(sk.id)
+            for (t in TRAINING) if (g.tr(t.id) < t.max && g.d.gold >= trainingCost(t, g.tr(t.id)) * 3) g.buyTraining(t.id)
             when (best) { null -> return; "tap" -> g.buyTap(); else -> g.buyHero(best!!) }
         }
         // spend skill points round-robin over the damage nodes

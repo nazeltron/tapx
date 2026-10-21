@@ -46,7 +46,7 @@ resource-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/cl
 
 # --- Store, ranks and community ---
 # Your web store (PayNow etc.), shown by /store.
-store-url: ""
+store-url: "https://tapx.paynow.store"
 ranks:
   # Also give LuckPerms groups named after the ranks (vip, pro, mvp, elite, titan, legend) if LuckPerms is installed.
   luckperms: true

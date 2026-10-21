@@ -9,6 +9,7 @@ import net.minecraft.core.Direction
 import net.kyori.adventure.text.Component
 import net.minecraft.core.NonNullList
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket
+import net.minecraft.network.protocol.game.ClientboundGameEventPacket
 import net.minecraft.network.protocol.game.ClientboundSetCameraPacket
 import net.minecraft.network.protocol.game.ClientboundSetExperiencePacket
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
@@ -176,6 +177,8 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
      * Tell only the client that its inventory is empty and its XP is zero, so nothing is held in
      * view and no level number shows. The real inventory is untouched and re-sent on leaving;
      * packets that would act on it are dropped while playing (see [installInput]).
+     * The client is also told it's in creative mode (the server keeps adventure), so it draws no
+     * XP/locator bar, hearts or hunger at all, even without the screen pack.
      */
     private fun hideHud(p: Player) {
         val sp = (p as CraftPlayer).handle
@@ -183,6 +186,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         sp.connection.send(ClientboundContainerSetContentPacket(menu.containerId, menu.incrementStateId(),
             NonNullList.withSize(menu.slots.size, ItemStack.EMPTY), ItemStack.EMPTY))
         sp.connection.send(ClientboundSetExperiencePacket(0f, 0, 0))
+        sp.connection.send(ClientboundGameEventPacket(ClientboundGameEventPacket.CHANGE_GAME_MODE, 1f))
     }
 
     /** Move the camera closer/further so the screen fits this player's field of view. */
@@ -212,6 +216,9 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             p.sendExperienceChange(p.exp, p.level)
             for (o in Bukkit.getOnlinePlayers()) if (o != p) { o.showPlayer(plugin, p); p.showPlayer(plugin, o) }
             if (restoreMode) p.gameMode = s?.d?.returnMode?.let { runCatching { GameMode.valueOf(it) }.getOrNull() } ?: GameMode.SURVIVAL
+            // undo the client-only creative mode (setting the same mode sends nothing)
+            p.handle.connection.send(ClientboundGameEventPacket(ClientboundGameEventPacket.CHANGE_GAME_MODE, p.handle.gameMode.gameModeForPlayer.id.toFloat()))
+            p.updateInventory()
             if (teleportBack) p.teleport(s?.d?.returnTo?.let(::stringToLoc) ?: Bukkit.getWorlds()[0].spawnLocation)
             s?.d?.returnTo = null
             s?.d?.returnMode = null

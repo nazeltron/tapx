@@ -879,7 +879,9 @@ object Art {
     // ==================================================================== icons
     private val ICON_BG = mapOf(
         "thunder" to ("2a6fe0" to "8fd0ff"), "frenzy" to ("d04a2a" to "ffb06a"), "warcry" to ("b8861a" to "ffe08a"), "midas" to ("c9a01a" to "fff0a0"),
-        "berserk" to ("b3202a" to "ff7a4a"), "eagle" to ("2a8a6a" to "a8ffd8"), "surge" to ("d0502a" to "ffd23a"), "phantom" to ("5a3ab0" to "c8a8ff"),
+        "berserk" to ("b3202a" to "ff7a4a"), "eagle" to ("2a8a6a" to "a8ffd8"),
+        "haste" to ("1a8a9a" to "8affe8"), "clone" to ("3a2a6a" to "9a8ad8"), "meteor" to ("a83a10" to "ffb050"), "execute" to ("6a0a14" to "ff5a5a"),
+        "petfrenzy" to ("3a8a2a" to "b0f08a"), "timewarp" to ("1a3a8a" to "8ab8ff"), "surge" to ("d0502a" to "ffd23a"), "phantom" to ("5a3ab0" to "c8a8ff"),
         "shower" to ("c98a1a" to "ffe58a"), "flask" to ("1a7ab0" to "8ae8ff"), "blade" to ("5a6a80" to "d8e2f0"), "gauntlet" to ("7a4a2a" to "e0b080"),
         "banner" to ("9a2a2a" to "ff8a6a"), "idol" to ("a88a1a" to "ffe680"), "clover" to ("2a8a3a" to "a8f08a"), "fang" to ("6a2a8a" to "e0a8ff"),
         "hourglass" to ("6a5a3a" to "f0dca0"), "crystal" to ("2a5ab0" to "8ad8ff"), "tome" to ("5a2a8a" to "d0a0ff"), "boots" to ("3a5a2a" to "b0e08a"),
@@ -1034,6 +1036,38 @@ object Art {
                     line(-1.0, -10.0 + i * 13, 12.0, -10.0 + i * 13, hex("8a7a6a"), 2.5f)
                 }
                 line(-11.0, -10.0, -8.0, -7.0, hex("2a9a3a"), 2.5f); line(-8.0, -7.0, -3.0, -15.0, hex("2a9a3a"), 2.5f)
+            }
+            "haste" -> {
+                for (i in 0 until 3) {
+                    val yy = -14.0 + i * 14
+                    fillStroke(path { moveTo(-20.0 + i * 4, yy - 5); lineTo(8.0 + i * 4, yy - 5); lineTo(8.0 + i * 4, yy - 10); lineTo(22.0 + i * 4, yy); lineTo(8.0 + i * 4, yy + 10); lineTo(8.0 + i * 4, yy + 5); lineTo(-20.0 + i * 4, yy + 5); closePath() }, if (i == 1) WHITE else hex("bfffef"), 2.5f)
+                }
+            }
+            "clone" -> {
+                for ((dx, c) in listOf(8.0 to hex("6a5aa8"), -6.0 to hex("e8e4ff"))) {
+                    fillStroke(circle(dx, -12.0, 9.0), c, 3f)
+                    fillStroke(rrect(dx - 11, -2.0, 22.0, 26.0, 8.0), c, 3f)
+                }
+            }
+            "meteor" -> {
+                fill(path { moveTo(-26.0, -26.0); lineTo(4.0, -4.0); lineTo(-6.0, 6.0); closePath() }, hex("ffe08a").alpha(0.8))
+                fillStroke(circle(6.0, 6.0, 15.0), hex("ff7a2a"), 3f)
+                fill(circle(2.0, 2.0, 5.0), hex("ffd23a")); fill(circle(12.0, 10.0, 3.5), hex("c03a10"))
+            }
+            "execute" -> {
+                save { rotate(-0.6); fillStroke(path { moveTo(-3.0, 24.0); lineTo(-3.0, -10.0); lineTo(3.0, -10.0); lineTo(3.0, 24.0); closePath() }, hex("8a5a3a"), 3f)
+                    fillStroke(path { moveTo(-3.0, -10.0); quadTo(-24.0, -14.0, -20.0, -30.0); quadTo(-6.0, -24.0, 3.0, -24.0); closePath() }, hex("dfe6ee"), 3f) }
+                fill(circle(14.0, 14.0, 6.0), hex("ff3a3a"))
+            }
+            "petfrenzy" -> {
+                fillStroke(ellipse(0.0, 8.0, 14.0, 12.0), hex("ffd8a0"), 3f)
+                for ((px, py) in listOf(-16.0 to -8.0, -6.0 to -18.0, 6.0 to -18.0, 16.0 to -8.0)) fillStroke(ellipse(px, py, 6.0, 7.0), hex("ffd8a0"), 3f)
+            }
+            "timewarp" -> {
+                fillStroke(circle(0.0, 0.0, 22.0), hex("dcefff"), 3f)
+                line(0.0, 0.0, 0.0, -14.0, OUT, 3.5f); line(0.0, 0.0, -10.0, 6.0, OUT, 3.5f)
+                stroke = stroke(4f); color = hex("4a8aff"); draw(arc(0.0, 0.0, 28.0, -2.6, -0.4))
+                fill(path { moveTo(26.0, -14.0); lineTo(30.0, -2.0); lineTo(18.0, -6.0); closePath() }, hex("4a8aff"))
             }
             "exit" -> {
                 line(-12.0, -12.0, 12.0, 12.0, WHITE, 7f); line(12.0, -12.0, -12.0, 12.0, WHITE, 7f)
