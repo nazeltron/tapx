@@ -1,65 +1,80 @@
 # TapX
 
-A 2D tap-to-fight idle RPG in the style of Tap Titans, playable in any browser.
+A Tap Titans-style idle clicker game for **Paper 1.21.11** servers, written in Kotlin.
+The whole game is played in chest menus built from **vanilla items, so players need no resource pack**.
 
-**No texture pack, no images, no sound files.** Every character, monster, pet,
-background, icon and sound effect is generated in code (HTML5 canvas paths and
-the Web Audio API).
+## Install
 
-## Play
+1. Build it (see below) or take the released `TapX-<version>.jar`.
+2. Drop the jar into your server's `plugins/` folder and restart.
+3. Players type **`/tapx`** to play.
 
-The easiest way: download the single file in `dist/` (e.g. `dist/TapX-v1.0.0.html`)
-and open it in any browser. It contains the whole game, so it works on its own.
-
-From the source you can also open `index.html` directly. There is nothing to install.
-On a phone, put the folder on any static host (e.g. GitHub Pages) and open it.
-
-Or run a local server:
-
-```sh
-python3 -m http.server 8000   # then open http://localhost:8000
-```
+Requires Paper 1.21.11 and Java 21. Kotlin is bundled inside the jar.
 
 ## How it plays
 
-- **Tap the monster** to attack. Defeat 8 monsters, then beat the **boss** before
-  the timer runs out to reach the next stage. If the boss escapes, farm and
-  press **Fight Boss** when you're stronger (or **Leave Battle** anytime).
-- Every 10 stages takes you to a new world: Meadow Ruins, Sunscorch Dunes,
-  Frostpeak, Gloomwood, Ember Depths, Crystal Void.
-- Monsters are generated from a random seed, so they all look different: blobs,
-  towers, cones, orbs, brutes and slimes with random horns, eyes, mouths, arms,
-  spikes and colours. Bosses wear crowns. Watch out for **treasure mimics** (12x gold).
-- Catch the **wisp** that sometimes flies across the screen for a bonus.
+- **Click the monster** (or anywhere in the battle area) to attack. Damage shows on the action bar and the
+  monster's health shows on the boss bar.
+- Defeat 8 monsters, then beat the **boss** before its timer runs out. If it escapes, farm and press
+  **Fight Boss** when ready (or **Leave Battle**).
+- Every 10 stages is a new world (Meadow Ruins → Sunscorch Dunes → Frostpeak → Gloomwood → Ember Depths →
+  Crystal Void), each with its own monsters and colours. Bosses get crowns of glint, and sometimes a
+  **Treasure Mimic** shows up for 12x gold.
+- Catch the glowing **wisp** when it appears for a bonus.
+- Close the menu any time. Allies keep earning gold while you're away (collected when you reopen).
 
-### Tabs
+### Tabs (bottom row)
 
 | Tab | What it does |
 | --- | --- |
-| ⚔️ Sword Master | Level up tap damage, prestige, learn mana **spells** (Thunder Strike, Frenzy Blades, War Cry, Midas Touch, Berserk, Eagle Eye) and buy gem **perks** |
-| 🛡️ Allies | Hire 12 allies who deal damage per second, even while you're away |
-| 👕 Equipment | Weapons, helmets, armor and auras from chests. They change how your hero looks and give bonuses |
-| 🐾 Pets | One active pet charges up as you tap and attacks every 15 taps |
-| ❤️ Artifacts | Spend relics from prestiging on permanent upgrades |
-| 🧰 Shop | Free chest every 4 hours, gem chests, and pet egg daily deals (gems only, no real money) |
+| ⚔ Sword Master | Level up tap damage, prestige, learn 6 mana **spells**, buy gem **perks** |
+| Allies | Hire 12 allies who deal damage every second |
+| Equipment | Weapons, helmets, armor and auras from chests: bonuses + shown on your hero |
+| Pets | One active pet charges as you tap and strikes every 15 taps |
+| Artifacts | Spend relics (from prestiging) on permanent upgrades |
+| Shop | Free chest every 4 hours, gem chests, pet-egg daily deals. **Gems only, no real money** |
 
-Also included: achievements (gem rewards), offline earnings, autosave, and
-save export/import (⚙ button).
+Also: achievements (gem rewards), a server leaderboard, sound toggle, and per-player saves.
+
+## Commands & permissions
+
+| Command | Permission | Default |
+| --- | --- | --- |
+| `/tapx` (aliases `/tap`, `/taptitans`) — open the game | `tapx.play` | everyone |
+| `/tapx top` — leaderboard in chat | `tapx.play` | everyone |
+| `/tapx admin give <player> <gold\|gems\|relics> <amount>` | `tapx.admin` | op |
+| `/tapx admin stage <player> <stage>` | `tapx.admin` | op |
+| `/tapx admin reset <player>` | `tapx.admin` | op |
+
+## Config (`plugins/TapX/config.yml`)
+
+```yaml
+starting-gems: 100          # gems for new players
+max-offline-hours: 12       # cap on "while you were away" earnings
+max-taps-per-second: 20     # stops auto-clickers from going wild
+autosave-minutes: 5
+```
+
+Player progress is saved to `plugins/TapX/players/<uuid>.json`.
+
+## Building
+
+```sh
+./gradlew build     # -> build/libs/TapX-<version>.jar
+```
+
+The version lives in `gradle.properties`. Bump it for every update; the jar name follows it.
 
 ## Code layout
 
 | File | Purpose |
 | --- | --- |
-| `js/util.js` | Math, seeded RNG, number formatting (K, M, B, T, Qa...), synthesized sound effects |
-| `js/data.js` | All game content: worlds, allies, spells, artifacts, gear, pets, achievements |
-| `js/game.js` | Game state, formulas and rules (no DOM, so it can run headless) |
-| `js/art.js` | Procedural art: chibi characters, monster generator, pets, backgrounds, icons |
-| `js/ui.js` | Bottom panel: tabs, upgrade rows, shop, modals |
-| `js/main.js` | Battle view rendering, effects, input, main loop |
-| `tools/build.js` | Bundles everything into one file: `node tools/build.js` → `dist/TapX-v<version>.html` |
-| `tools/sim.js` | Headless balance simulator: `node tools/sim.js [hours] [tapsPerSecond]` |
+| `Content.kt` | All game content: worlds, allies, spells, perks, artifacts, gear, pets, chests, achievements |
+| `Game.kt` | Rules and formulas for one player (combat, buying, prestige, offline earnings) |
+| `PlayerData.kt` | What gets saved per player |
+| `Session.kt` | One online player's game: ticking, sounds, boss bar, titles, effects |
+| `Menus.kt` | Every chest menu (battle screen and all tabs) |
+| `Items.kt` | Builds the vanilla items used in menus (clean tooltips, glint, heads) |
+| `TapXPlugin.kt` | Plugin entry: commands, events, saving, leaderboard |
 
-## Releasing an update
-
-1. Bump `GAME_VERSION` in `js/data.js` (e.g. `1.0.0` → `1.1.0`).
-2. Run `node tools/build.js`. It writes `dist/TapX-v<version>.html` and removes the old bundle.
+`web/` holds the original browser prototype of the game, kept for reference.

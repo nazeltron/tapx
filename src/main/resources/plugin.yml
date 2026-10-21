@@ -1,0 +1,19 @@
+name: TapX
+version: '${version}'
+main: dev.tapx.TapXPlugin
+api-version: '1.21'
+description: A Tap Titans-style idle clicker game played in chest menus. No resource pack needed.
+author: nazeltron
+commands:
+  tapx:
+    description: Open TapX
+    usage: /tapx [top|help|admin]
+    aliases: [tap, taptitans]
+    permission: tapx.play
+permissions:
+  tapx.play:
+    description: Play TapX
+    default: true
+  tapx.admin:
+    description: Use /tapx admin commands
+    default: op

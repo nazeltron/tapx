@@ -1,0 +1,13 @@
+# TapX configuration
+
+# Players start with this many gems.
+starting-gems: 100
+
+# Most hours of "while you were away" gold a player can collect at once.
+max-offline-hours: 12
+
+# Clicks per second that count as taps. Stops auto-clickers from going wild.
+max-taps-per-second: 20
+
+# How often to save players who are playing, in minutes.
+autosave-minutes: 5
