@@ -30,6 +30,9 @@ screen-aspect: 1.778
 # Screen updates per second, 2 to 40 (higher = smoother, more CPU and bandwidth). The cursor
 # always moves 40 times a second. One player at 20 fps uses roughly 15% of one CPU core.
 screen-fps: 20
+# Map pixels per layout pixel: 2 = sharp 1792x1024 screen (14x8 maps), 1 = 896x512 (cheaper:
+# about a quarter of the CPU and bandwidth, but it looks pixelated on big monitors).
+screen-resolution: 2
 # Background threads used to draw screens.
 render-threads: 2
 
@@ -38,3 +41,35 @@ render-threads: 2
 # plugins/TapX/tapx-screen-pack.zip somewhere and put its direct download link in resource-pack-url.
 hide-crosshair: true
 resource-pack-url: ""
+# Used automatically if a player can't download the pack from the game port (e.g. some hosts).
+resource-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-screen-pack.zip"
+
+# --- Store, ranks and community ---
+# Your web store (PayNow etc.), shown by /store.
+store-url: ""
+ranks:
+  # Also give LuckPerms groups named after the ranks (vip, pro, mvp, elite, titan, legend) if LuckPerms is installed.
+  luckperms: true
+discord:
+  # Invite link shown by /discord and /link. Linking itself needs the DiscordSRV plugin.
+  invite: ""
+piggy-bank:
+  # Real money spent (from /tapx payment) that fills the piggy bank; when full everyone gets an event.
+  goal-usd: 100
+  event-minutes: 30
+  event-multiplier: 2
+rules:
+  - "Be kind to everyone."
+  - "No cheating, macros or auto-clickers."
+  - "No spam or advertising."
+  - "Listen to staff."
+tab:
+  title: "TAPX"
+  subtitle: "Tap Titans, right in Minecraft"
+chat:
+  # Rank tags, name colours and a stats card when hovering a name.
+  format: true
+  first-join-broadcast: true
+commands:
+  # TapX commands replace vanilla ones (/msg, /tp ...). Set true to also replace other plugins' (EssentialsX).
+  override-plugins: false

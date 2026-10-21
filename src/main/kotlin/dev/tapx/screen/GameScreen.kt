@@ -45,11 +45,15 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private val g get() = host.game
     private val d get() = host.game.d
 
-    val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    /** Device size: [width] x [height] layout units at Res.k map pixels each. */
+    val pw = width * Res.k
+    val ph = height * Res.k
+    val image = BufferedImage(pw, ph, BufferedImage.TYPE_INT_RGB)
     val pixels: IntArray = (image.raster.dataBuffer as DataBufferInt).data
     private val gfx: Graphics2D = image.createGraphics().apply {
         setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+        scale(Res.k.toDouble(), Res.k.toDouble())
     }
 
     // ------------------------------------------------------------------ layout
@@ -115,6 +119,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     // ================================================================== input
     /** Mouse movement in degrees (from the client's head rotation). */
     fun mouse(dYaw: Double, dPitch: Double) {
+        idle = 0.0
+        if (curX >= RX - 20) panelDirty = true
         val k = 7.0 * d.cursorSpeed.coerceIn(0.25, 4.0)
         curX = clamp(curX + dYaw * k, 0.0, width - 1.0)
         curY = clamp(curY + dPitch * k, 0.0, height - 1.0)
@@ -125,12 +131,16 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     /** Mouse wheel notches (positive = down): scrolls the list, or a pop-up's list. */
     fun wheel(steps: Int) {
+        idle = 0.0
+        panelDirty = true
         if (modal != null) return
         scrollBy(steps * 52)
     }
 
     /** Left-click (or space): press the button under the cursor, otherwise attack. */
     fun click() {
+        idle = 0.0
+        panelDirty = true
         if (dragging) { dragging = false; return }
         val b = buttonAt(curX.toInt(), curY.toInt())
         if (b != null) { b.action(); return }
@@ -149,6 +159,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     /** Movement keys (WASD), jump (space) and sneak (shift), as pressed/released. */
     fun input(forward: Boolean, back: Boolean, left: Boolean, right: Boolean, jump: Boolean, sneak: Boolean, prevJump: Boolean, prevSneak: Boolean) {
+        idle = 0.0
+        panelDirty = true
         fun dir(name: String, on: Boolean, dx: Int, dy: Int) {
             if (on && name !in held) { held[name] = 0.4; if (dy == 0 || !overList()) move(dx, dy) }
             if (!on) held.remove(name)
@@ -191,6 +203,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     // ================================================================== update
     fun update(dt: Double) {
         t += dt
+        idle += dt
+        tutorialUpdate()
         for (k in held.keys.toList()) {
             if ((k == "up" || k == "down") && overList()) { scrollBy((if (k == "up") -520 else 520) * dt); continue }
             val left = held[k]!! - dt
@@ -245,7 +259,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     // ================================================================== positions (battle-panel coordinates)
     private fun heroPos() = 215.0 to GY
     private fun monPos() = 350.0 to GY
-    private fun goldPos() = BW / 2.0 - 30 to 90.0
+    private fun goldPos() = BW / 2.0 - 30 to 102.0
     private fun allyPos(i: Int): Triple<Double, Double, Double> {
         val row = i % 2; val col = i / 2
         return Triple(178.0 - col * 22 - row * 10, GY - (if (row == 1) 20 else 4), U * (if (row == 1) 0.66 else 0.76))
@@ -286,13 +300,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             floater("CRIT!", cx, cy - 70, hex("ffd23a"), 2, vx = 0.0, vy = -60.0, life = 0.6)
             host.sfx(Sfx.CRIT)
         } else if (!auto) host.sfx(Sfx.HIT)
-        burst(cx, cy, if (crit) hex("ffb43a") else Color.WHITE, if (crit) 10 else 4, if (crit) 260.0 else 160.0)
+        burst(cx, cy, if (crit) hex("ffb43a") else Color.WHITE, if (crit) 6 else 2, if (crit) 260.0 else 160.0)
     }
 
     override fun onKill(m: Monster, gold: Double, gems: Int) {
         val (cx, cy) = monsterCenter()
-        burst(cx, cy, currentSpec()?.color ?: Color.WHITE, 26, 340.0, 7.0)
-        repeat(if (m.boss) 12 else if (m.mimic) 16 else 4) { coins += Coin(cx, cy, Random.nextDouble(-160.0, 160.0), Random.nextDouble(-380.0, -200.0)) }
+        burst(cx, cy, currentSpec()?.color ?: Color.WHITE, 14, 340.0, 7.0)
+        repeat(if (m.boss) 8 else if (m.mimic) 10 else 3) { coins += Coin(cx, cy, Random.nextDouble(-160.0, 160.0), Random.nextDouble(-380.0, -200.0)) }
         floater("+" + fmt(gold), cx, cy - 60, hex("ffd23a"), 2, vx = 0.0, vy = -70.0, life = 1.2)
         if (gems > 0) floater("+$gems GEM" + (if (gems > 1) "S" else ""), cx, cy - 90, hex("6ae4ff"), 2, vx = 0.0, vy = -50.0, life = 1.4)
         host.sfx(if (m.boss) Sfx.BOSS_KILL else Sfx.KILL)
@@ -345,7 +359,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         val col = h.look.glow?.let(::hex) ?: when (w) { "bow" -> hex("dddddd"); "gun" -> hex("ffe08a"); "leaf" -> hex("7bd65a"); else -> Color.WHITE }
         val tx = cx + Random.nextDouble(-20.0, 20.0); val ty = cy + Random.nextDouble(-25.0, 25.0)
         shots += Shot(w, ax + 10, ay - 30 * s, tx, ty, 0.0, if (w == "gun") 0.1 else 0.22, if (w == "bow") 30.0 else if (w == "gun") 0.0 else 16.0, col)
-        floater(fmt(damage), tx, ty - 20, hex("bfe4ff"), 1, vy = -70.0, life = 0.8)
+        // no number per ally hit: 16 allies a second would flood the screen (and the bandwidth)
     }
 
     override fun onAchievement(group: AchGroup, target: Double, gems: Int) {
@@ -387,14 +401,14 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     /** A framed window: dark rim, soft vertical gradient, a lit top edge. */
     private fun panel(x: Int, y: Int, w: Int, h: Int, top: Color = hex("323858"), bottom: Color = hex("1f2338")) {
-        gfx.drawImage(Widgets.panel(w, h, top, bottom), x, y, null)
+        gfx.blit(Widgets.panel(w, h, top, bottom), x, y)
     }
 
     /** A glossy, raised game button; returns true if hovered. */
     private fun button(x: Int, y: Int, w: Int, h: Int, label: String, base: Color, enabled: Boolean = true, scale: Int = 1, id: String? = null, action: () -> Unit): Boolean {
         val hov = hovered(x, y, w, h)
         val c = when { !enabled -> hex("5c6178"); hov -> base.shade(0.18); else -> base }
-        gfx.drawImage(Widgets.button(w, h, c), x, y, null)
+        gfx.blit(Widgets.button(w, h, c), x, y)
         if (label.isNotEmpty()) text(label, x + w / 2, y + (h - 3 - GameFont.HEIGHT * scale) / 2, if (enabled) Color.WHITE else hex("c4c8d6"), scale, 1)
         nextButtons += Button(id ?: "$x,$y", x, y, w, h, { if (enabled) { action() } else host.sfx(Sfx.ERROR) }, drawingList)
         return hov
@@ -403,12 +417,47 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private fun hit(x: Int, y: Int, w: Int, h: Int, id: String? = null, action: () -> Unit) { nextButtons += Button(id ?: "$x,$y", x, y, w, h, action, drawingList) }
 
     // ================================================================== frame
+    // The right panel changes far less often than the battle: it is redrawn when something may have
+    // changed (input, hover, pop-ups) and at least every 4th frame; otherwise last frame's copy is reused.
+    private var frameCorners: java.awt.Shape? = null
+    private var panelDirty = true
+    private var frameNo = 0L
+    private var lastSelected: String? = null
+    private val panelX = (RX - 3) * Res.k
+    /** Device x where the cached right panel starts. */
+    val panelLeft get() = panelX
+    private val panelCache = IntArray((pw - panelX) * ph)
+    private var panelButtons: List<Button> = emptyList()
+
+    /** True if the last [render] redrew the right panel (otherwise its pixels are unchanged). */
+    var panelRedrawn = true
+        private set
+    /** Seconds since the player last moved the mouse, clicked or pressed a key. */
+    var idle = 0.0
+        private set
+
     fun render() {
         nextButtons = ArrayList()
         footer = ""
-        gfx.color = hex("0b0d1a"); gfx.fillRect(0, 0, width, height)
+        val fullPanel = panelDirty || modal != null || frameNo++ % 4 == 0L || selected != lastSelected
+        lastSelected = selected
+        panelDirty = false
+        panelRedrawn = fullPanel
+        gfx.color = hex("0b0d1a")
+        if (fullPanel) gfx.fillRect(0, 0, width, height) else gfx.fillRect(0, 0, RX - 3, height)
         drawBattle()
-        drawPanel()
+        if (fullPanel) {
+            val before = nextButtons.size
+            drawPanel()
+            panelButtons = nextButtons.subList(before, nextButtons.size).toList()
+            val w = pw - panelX
+            for (y in 0 until ph) System.arraycopy(pixels, y * pw + panelX, panelCache, y * w, w)
+        } else {
+            val w = pw - panelX
+            for (y in 0 until ph) System.arraycopy(panelCache, y * w, pixels, y * pw + panelX, w)
+            nextButtons.addAll(panelButtons)
+        }
+        drawTutorial()
         drawingModal = true
         modal?.draw()
         drawingModal = false
@@ -443,24 +492,24 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         val fresh = curX != seenX || curY != seenY
         seenX = curX; seenY = curY
         if (fresh) { drawX = (drawX + curX) / 2; drawY = (drawY + curY) / 2 } else { drawX = curX; drawY = curY }
-        return drawX.toInt() - 1 to drawY.toInt() - 1
+        return ((drawX - 1) * Res.k).toInt() to ((drawY - 1) * Res.k).toInt()
     }
 
     /**
      * Draw the cursor straight onto a frame of map colours. It is kept out of [render] so it can
      * move every client tick without redrawing the whole screen.
      */
-    fun overlayCursor(map: ByteArray) = overlayCursorAt(map, curX.toInt() - 1, curY.toInt() - 1)
+    fun overlayCursor(map: ByteArray) = overlayCursorAt(map, ((curX - 1) * Res.k).toInt(), ((curY - 1) * Res.k).toInt())
 
-    /** Draw the cursor sprite with its top-left at ([x0], [y0]). */
+    /** Draw the cursor sprite with its top-left at device pixel ([x0], [y0]). */
     fun overlayCursorAt(map: ByteArray, x0: Int, y0: Int) {
         for (y in 0 until CURSOR_H) {
             val ty = y0 + y
-            if (ty !in 0 until height) continue
+            if (ty !in 0 until ph) continue
             for (x in 0 until CURSOR_W) {
                 val tx = x0 + x
                 val i = y * CURSOR_W + x
-                if (cursorMask[i] && tx in 0 until width) map[ty * width + tx] = cursorSprite[i]
+                if (cursorMask[i] && tx in 0 until pw) map[ty * pw + tx] = cursorSprite[i]
             }
         }
     }
@@ -485,10 +534,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private fun overList() = modal == null && curX >= RX && curX < RX + RW && curY >= LIST_Y - 30 && curY < LIST_Y + LIST_H
 
     private fun scrollBy(pixels: Double) {
+        panelDirty = true
         scroll = clamp(scroll + pixels, 0.0, max(0.0, (listContentH - LIST_H).toDouble()))
     }
 
     private fun scrollBy(pixels: Int) {
+        panelDirty = true
         scroll = clamp(scroll + pixels, 0.0, max(0.0, (listContentH - LIST_H).toDouble()))
     }
 
@@ -496,13 +547,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private fun drawBattle() = gfx.save {
         val world = worldFor(d.stage)
         translate(BX.toDouble(), BY.toDouble())
-        clip(rrect(0.0, 0.0, BW.toDouble(), BH.toDouble(), 12.0))
+        clip(Rectangle2D.Double(0.0, 0.0, BW.toDouble(), BH.toDouble()))
         val shakeX = if (shake > 0) Random.nextDouble(-shake, shake) else 0.0
         val shakeY = if (shake > 0) Random.nextDouble(-shake, shake) else 0.0
         save {
             translate(shakeX, shakeY)
             if (bg == null || bgWorld != world) { bg = Art.background(world, BW, BH, GY); bgWorld = world }
-            drawImage(bg, 0, 0, null)
+            blit(bg!!, 0, 0)
             Art.ambience(this, world, BW, GY, ta)
 
             HEROES.forEachIndexed { i, h ->
@@ -520,7 +571,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                 var px = homeX; var py = homeY
                 if (petAtk > 0) { val k = sin(petAtk * PI); val (cx, cy) = monsterCenter(); px = lerp(homeX, cx - 30, k); py = lerp(homeY, cy, k) }
                 Art.drawPet(this, p, px, py, 0.85, t, petAtk > 0)
-                val f = d.petCharge.toDouble() / PET_CHARGE
+                val f = d.petCharge.toDouble() / g.petCharge()
                 stroke = stroke(3f); color = Color(0, 0, 0, 90); draw(circle(homeX, homeY + 30, 7.0))
                 color = hex("9bff7a"); draw(arc(homeX, homeY + 30, 7.0, -PI / 2, -PI / 2 + TAU * f))
             }
@@ -565,10 +616,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         if (flash > 0) save { alpha(min(1.0, flash)); fill(Rectangle2D.Double(0.0, 0.0, BW.toDouble(), BH.toDouble()), flashColor) }
         banner?.let { b ->
             val y = 190
-            drawImage(Widgets.ribbon(BW - 80, 34, hex("2a2f58")), 40, y - 8, null)
+            blit(Widgets.ribbon(BW - 80, 34, hex("2a2f58")), 40, y - 8)
             text(b.text, BW / 2, y + 1, b.color, 2, 1)
         }
         // frame
+        val outer = java.awt.geom.Area(Rectangle2D.Double(0.0, 0.0, BW.toDouble(), BH.toDouble()))
+        if (frameCorners == null) frameCorners = outer.apply { subtract(java.awt.geom.Area(rrect(0.0, 0.0, BW.toDouble(), BH.toDouble(), 12.0))) }
+        fill(frameCorners!!, hex("0b0d1a"))
         stroke = stroke(4f); color = hex("0e1020"); draw(rrect(1.0, 1.0, BW - 2.0, BH - 2.0, 12.0))
         stroke = stroke(2f); color = hex("6a74a8"); draw(rrect(3.0, 3.0, BW - 6.0, BH - 6.0, 10.0))
     }
@@ -593,7 +647,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         iconButton(122, 6, 26, "gear") { modal = SettingsModal() }
 
         // stage pips (drawn once per stage)
-        gfx.drawImage(Widgets.custom("pips:${d.stage}", 180, 44) {
+        gfx.blit(Widgets.custom("pips:${d.stage}", 180, 44) {
             val cy = 22.0
             fun pip(x: Double, r: Double, stage: Int, cur: Boolean) {
                 if (stage < 1) return
@@ -613,7 +667,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             pip(30.0, 13.0, d.stage - 1, false)
             pip(90.0, 18.0, d.stage, true)
             pip(150.0, 13.0, d.stage + 1, false)
-        }, (BW / 2 - 90), 0, null)
+        }, (BW / 2 - 90), 0)
 
         // wave / boss indicator + boss button
         if (m != null && m.boss && !m.dead) {
@@ -634,17 +688,23 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         if (m != null) {
             val f = clamp(m.hp / m.maxHp, 0.0, 1.0)
             if (f > 0) gfx.save {
-                clip(rrect(bx, by, bw, bh, 8.0))
                 val c = if (m.boss) hex("e8342a") else hex("f2662a")
                 paint = GradientPaint(0f, by.toFloat(), c.shade(0.35), 0f, (by + bh).toFloat(), c.shade(-0.25))
-                fill(Rectangle2D.Double(bx, by, bw * f, bh))
-                fill(rrect(bx + 3, by + 2, bw * f - 6, 6.0, 3.0), Color(255, 255, 255, 70))
+                fill(rrect(bx, by, max(bh, bw * f), bh, 8.0))
+                if (bw * f > 12) fill(rrect(bx + 4, by + 2, bw * f - 8, 6.0, 3.0), Color(255, 255, 255, 70))
             }
             if (m.boss) Art.skull(gfx, bx - 6, by + bh / 2, 11.0)
             text(fit(m.name, 170), (bx + 14).toInt(), (by + 6).toInt(), Color.WHITE)
             text("${fmt(ceil(m.hp))} HP", (bx + bw - 8).toInt(), (by + 6).toInt(), Color.WHITE, 1, 2)
         }
         gfx.stroke = stroke(1.2f); gfx.color = Color(255, 255, 255, 60); gfx.draw(rrect(bx, by, bw, bh, 8.0))
+
+        // server event (ADMIN ABUSE) banner, colour-cycling
+        dev.tapx.ServerEvents.label()?.let { label ->
+            val c = Color.getHSBColor(((t * 0.25) % 1.0).toFloat(), 0.65f, 1f)
+            gfx.blit(Widgets.ribbon(250, 18, hex("2a1a48")), BW / 2 - 125, 70)
+            text("ADMIN ABUSE  $label  ${fmtTime(dev.tapx.ServerEvents.secondsLeft())}", BW / 2, 75, Color(c.red, c.green, c.blue), 1, 1)
+        }
 
         // gold
         val (gx, gy) = goldPos()
@@ -655,9 +715,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         val mx = 10.0; val my = 108.0
         gfx.fill(rrect(mx - 1, my - 1, 46.0, 10.0, 5.0), hex("0e1020"))
         gfx.save {
-            clip(rrect(mx, my, 44.0, 8.0, 4.0))
             paint = GradientPaint(0f, my.toFloat(), hex("9ad8ff"), 0f, (my + 8).toFloat(), hex("2a6ad0"))
-            fill(Rectangle2D.Double(mx, my, 44.0 * (d.mana / g.maxMana()), 8.0))
+            fill(rrect(mx, my, max(8.0, 44.0 * (d.mana / g.maxMana())), 8.0, 4.0))
         }
         text("${floor(d.mana).toInt()}", 32, (my - 10).toInt(), hex("8ad8ff"), 1, 1)
         SKILLS.forEachIndexed { i, sk -> skillButton(sk, 10, 120 + i * 46) }
@@ -719,7 +778,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val c = hex(TAB_COLORS[id]!!)
             val active = tab == id
             val hov = hovered(x, y, w, h)
-            gfx.drawImage(Widgets.tab(w, h, if (active) c.shade(0.12) else if (hov) c.shade(-0.12) else c.shade(-0.38), active), x, y, null)
+            gfx.blit(Widgets.tab(w, h, if (active) c.shade(0.12) else if (hov) c.shade(-0.12) else c.shade(-0.38), active), x, y)
             tabIcon(id, x + w / 2.0, y + 18.0)
             text(label, x + w / 2, y + h - 11, if (active) Color.WHITE else hex("c8cbd8"), 1, 1)
             if (tabBadge(id)) { gfx.fillStroke(circle(x + w - 6.0, y + 7.0, 4.0), hex("e8392a"), 1.5f, Color.WHITE) }
@@ -727,7 +786,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
         // header
         val hy = RY + 58
-        gfx.drawImage(Widgets.bar(RW - 12, 26, hex("454c72"), hex("2c3150")), RX + 6, hy, null)
+        gfx.blit(Widgets.bar(RW - 12, 26, hex("454c72"), hex("2c3150")), RX + 6, hy)
         when (tab) {
             "hero" -> headerStat(fmt(g.tapDamage()), "TAP DAMAGE")
             "allies" -> headerStat(fmt(g.heroDps()), "ALLY DPS")
@@ -749,11 +808,11 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             button(RX + 6 + i * 52, ty, 48, 20, label, if (d.mult == v) hex("c9a02a") else hex("5b6074")) { d.mult = v; host.sfx(Sfx.CLICK) }
         } else text(when (tab) {
             "gear" -> "Open chests in the shop for gear"
-            "pets" -> "Pets strike every $PET_CHARGE taps"
+            "pets" -> "Pets strike every ${g.petCharge()} taps"
             "artifacts" -> "Prestige to earn relics"
             "skills" -> "Points: 1 per 20 stages, 2 per prestige"
             "quests" -> "New quests every day"
-            else -> "Get more gems at our store!"
+            else -> if (FlashSale.active()) "FLASH SALE: ${FlashSale.percent}% OFF EVERYTHING!" else "Get more gems at our store! (/store)"
         }, RX + 10, ty + 7, hex("9aa0b8"))
         button(RX + RW - 60, ty, 26, 20, "^", hex("5b6074"), id = "scroll:up") { scrollBy(-104) }
         button(RX + RW - 32, ty, 26, 20, "v", hex("5b6074"), id = "scroll:down") { scrollBy(104) }
@@ -778,7 +837,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val (sy, sh) = thumb()
             val hot = dragging || (modal == null && hovered(SB_X - 4, LIST_Y, SB_W + 8, LIST_H))
             gfx.fill(rrect(SB_X.toDouble(), LIST_Y.toDouble(), SB_W.toDouble(), LIST_H.toDouble(), 5.0), hex("161a2a"))
-            gfx.drawImage(Widgets.button(SB_W, sh, if (hot) hex("ffc23a") else hex("7a83a8"), lip = false), SB_X, sy, null)
+            gfx.blit(Widgets.button(SB_W, sh, if (hot) hex("ffc23a") else hex("7a83a8"), lip = false), SB_X, sy)
             hit(SB_X - 4, LIST_Y, SB_W + 8, LIST_H, "scrollbar") { dragging = true; dragTo(curY) }
         } else dragging = false
         // footer
@@ -832,7 +891,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private class Row(val h: Int, val draw: (Int, Int, Int) -> Unit)
 
     private fun section(title: String) = Row(26) { x, y, w ->
-        gfx.drawImage(Widgets.ribbon(w, 20, hex("5a4aa8")), x, y + 4, null)
+        gfx.blit(Widgets.ribbon(w, 20, hex("5a4aa8")), x, y + 4)
         text(title, x + w / 2, y + 10, hex("fff2c8"), 1, 1)
     }
 
@@ -842,8 +901,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         cost: String?, costIcon: String, label: String, enabled: Boolean, glow: Boolean = false, hover: String = "", action: () -> Boolean,
     ) = Row(52) { x, y, w ->
         val hov = hovered(x, y, w, 50)
-        gfx.drawImage(Widgets.card(w, 49, hov), x, y, null)
-        gfx.drawImage(Widgets.iconFrame(), x + 2, y + 2, null)
+        gfx.blit(Widgets.card(w, 49, hov), x, y)
+        gfx.blit(Widgets.iconFrame(), x + 2, y + 2)
         icon(x + 4, y + 4)
         text(fit(title, w - 160, 1), x + 52, y + 6, Color.WHITE)
         text(fit(line1, w - 160), x + 52, y + 19, hex("8ad8ff"))
@@ -995,10 +1054,20 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         for ((sec, title) in SHOP_SECTIONS) {
             rows += section(title)
             when (sec) {
+                "rank" -> for (r in RANKS) {
+                    val have = rankIndex(d.rank) >= rankIndex(r.key)
+                    val cost = g.rankUpgradeCost(r)
+                    rows += upgradeRow("rank:${r.key}", { x, y -> shopIcon("rank:${r.key}", x, y) },
+                        "${r.name} RANK", rankPerks(r), when { d.rank == r.key -> "Your rank"; have -> "Included"; d.rank != null -> "Upgrade: pay the difference"; else -> "Chat & tab prefix, daily x${r.dailyBonus}" },
+                        if (have) null else cost.toString(), "gem", if (have) "OWNED" else if (d.rank != null) "UPGRADE" else "BUY",
+                        !have && d.gems >= cost, !have) {
+                        val msg = g.buyRank(r.key); if (msg != null) { showBanner(msg, hex(r.hex)); host.sfx(Sfx.LEGENDARY) }; msg != null
+                    }
+                }
                 "chest" -> for (c in CHESTS) rows += upgradeRow("chest:${c.id}", { x, y -> Art.chest(gfx, c, x + 21.0, y + 24.0, 0.7) },
                     c.name, "${c.items} pieces of gear",
                     when (c.id) { "titan" -> "1st is Epic or better!"; "legend" -> "All Epic or Legendary!"; else -> "%.1f%% Epic+".format(c.odds[2] * 100 + c.odds[3] * 100) },
-                    c.gems.toString(), "gem", "OPEN", d.gems >= c.gems, true) {
+                    g.chestPrice(c).toString(), "gem", "OPEN", d.gems >= g.chestPrice(c), true) {
                     val items = g.openChest(c.id); if (items != null) modal = LootModal(c.name.uppercase(), items, null); items != null
                 }
                 "skin" -> for (sk in SKINS) {
@@ -1006,8 +1075,8 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                     val wearing = d.skin == sk.id
                     rows += upgradeRow("skin:${sk.id}", { x, y -> Art.heroPortrait(gfx, sk.apply(HERO_LOOK), x.toDouble(), y.toDouble(), 42.0, hex("c9a02a")) },
                         sk.name, "Hero outfit (looks only)", if (wearing) "Wearing" else if (owned) "Owned" else "",
-                        if (owned) null else sk.gems.toString(), "gem", when { wearing -> "TAKE OFF"; owned -> "WEAR"; else -> "BUY" },
-                        owned || d.gems >= sk.gems, !owned) {
+                        if (owned) null else g.skinPrice(sk).toString(), "gem", when { wearing -> "TAKE OFF"; owned -> "WEAR"; else -> "BUY" },
+                        owned || d.gems >= g.skinPrice(sk), !owned) {
                         val ok = g.buySkin(sk.id); if (ok && !owned) showBanner("${sk.name.uppercase()}!", hex("ffd23a")); ok
                     }
                 }
@@ -1029,6 +1098,14 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                         if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff"))
                         msg != null
                     }
+                    if (sec == "perm" && item.id == SHOP_ITEMS.last { it.section == "perm" }.id && g.bundleItems().size >= 2) {
+                        val items = g.bundleItems()
+                        rows += upgradeRow("bundle", { x, y -> shopIcon("chest_titan", x, y) },
+                            "Gamepass Bundle", "All ${items.size} passes you don't own", "25% OFF! (was ${items.sumOf { it.gems }})",
+                            g.bundlePrice().toString(), "gem", "BUY ALL", d.gems >= g.bundlePrice(), true) {
+                            val msg = g.buyBundle(); if (msg != null) showBanner(msg, hex("6ae4ff")); msg != null
+                        }
+                    }
                     if (sec == "eggs" && item.id == "eggs20") {
                         val deals = g.currentDeals()
                         rows += section("DAILY DEALS - NEW IN ${fmtTime((DEAL_MS - System.currentTimeMillis() % DEAL_MS) / 1000.0)}")
@@ -1036,7 +1113,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                             val p = petDef(deal.pet) ?: return@forEachIndexed
                             rows += upgradeRow("deal:$i", { x, y -> Art.petPortrait(gfx, p, x.toDouble(), y.toDouble(), 42.0, true) },
                                 "${p.name} x${deal.eggs} eggs", "Pet bonus: ${p.label}", if (deal.bought) "Sold out" else "",
-                                if (deal.bought) null else deal.gems.toString(), "gem", if (deal.bought) "SOLD" else "BUY", !deal.bought && d.gems >= deal.gems, false) {
+                                if (deal.bought) null else g.dealPrice(deal).toString(), "gem", if (deal.bought) "SOLD" else "BUY", !deal.bought && d.gems >= g.dealPrice(deal), false) {
                                 val ok = g.buyDeal(i); if (ok) { host.sfx(Sfx.PET); showBanner("${p.name.uppercase()} +${deal.eggs} EGGS", hex("9bff7a")) }; ok
                             }
                         }
@@ -1048,7 +1125,16 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
 
     private fun shopIcon(key: String, x: Int, y: Int) {
+        when {
+            key.startsWith("rank:") -> {
+                val r = rankDef(key.removePrefix("rank:")) ?: return
+                gfx.blit(Widgets.button(42, 42, hex(r.hex).shade(-0.15), lip = false), x, y)
+                text(r.name.take(3), x + 21, y + 17, Color.WHITE, 1, 1)
+                return
+            }
+        }
         when (key) {
+            "wheel" -> { gfx.blit(Widgets.button(42, 42, hex("8a3ad0"), lip = false), x, y); drawWheel(x + 21.0, y + 21.0, 15.0, 0.4, false) }
             "chest_titan" -> { gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("2a5f8a")); Art.chest(gfx, CHESTS[2], x + 21.0, y + 24.0, 0.7) }
             "relic" -> { gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("5a2a8a")); Art.relic(gfx, x + 21.0, y + 22.0, 14.0) }
             "egg" -> { gfx.fill(rrect(x.toDouble(), y.toDouble(), 42.0, 42.0, 6.0), hex("3a7a4a")); Art.egg(gfx, x + 21.0, y + 22.0, 13.0) }
@@ -1113,6 +1199,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             null, "", if (g.loginReady()) "COLLECT" else "DONE", g.loginReady(), true) {
             val msg = g.claimLogin(); if (msg != null) showBanner(msg.uppercase(), hex("ffd23a")); msg != null
         }
+        rows += upgradeRow("wheel", { x, y -> shopIcon("wheel", x, y) },
+            "Daily Wheel", "Spin for gold, eggs, relics, boosts or gems!", if (g.wheelReady()) "Free spin ready!" else "Next spin tomorrow",
+            null, "", if (g.wheelReady()) "SPIN" else "DONE", g.wheelReady(), true) { modal = WheelModal(); true }
         rows += section("DAILY QUESTS")
         g.quests().list.forEachIndexed { i, q ->
             val prog = g.questProgress(q)
@@ -1130,6 +1219,102 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val msg = g.claimQuestBonus(); if (msg != null) showBanner(msg.uppercase(), hex("6ae4ff")); msg != null
         }
         return rows
+    }
+
+    // ------------------------------------------------------------------ daily wheel
+    private val WHEEL_COLORS = listOf("ffcf3a", "58d06a", "c58aff", "ff8a3a", "4aa8ff", "ffb43a", "e8643a", "6ae4ff")
+
+    private fun drawWheel(cx: Double, cy: Double, r: Double, angle: Double, labels: Boolean) = gfx.save {
+        val n = WHEEL.size
+        for (i in 0 until n) {
+            val a0 = Math.toDegrees(angle) + i * 360.0 / n
+            val c = hex(WHEEL_COLORS[i % WHEEL_COLORS.size])
+            paint = java.awt.RadialGradientPaint(cx.toFloat(), cy.toFloat(), r.toFloat(), floatArrayOf(0f, 1f), arrayOf(c.shade(0.35), c.shade(-0.1)))
+            fill(java.awt.geom.Arc2D.Double(cx - r, cy - r, r * 2, r * 2, -a0, -360.0 / n, java.awt.geom.Arc2D.PIE))
+        }
+        stroke = stroke(if (labels) 2.5f else 1.2f); color = hex("2a1a48")
+        for (i in 0 until n) { val a = angle + i * TAU / n; draw(java.awt.geom.Line2D.Double(cx, cy, cx + cos(a) * r, cy + sin(a) * r)) }
+        stroke = stroke(if (labels) 5f else 2f); color = hex("ffd23a"); draw(circle(cx, cy, r))
+        fill(circle(cx, cy, r * 0.14), hex("2a1a48")); fill(circle(cx, cy, r * 0.09), hex("ffd23a"))
+        if (labels) for (i in 0 until n) {
+            val a = angle + (i + 0.5) * TAU / n
+            val tx = cx + cos(a) * r * 0.66; val ty = cy + sin(a) * r * 0.66
+            val label = WHEEL[i].first
+            text(label, tx.toInt(), ty.toInt() - 4, Color.WHITE, 1, 1)
+        }
+    }
+
+    private inner class WheelModal : Modal("DAILY WHEEL", 420, 340) {
+        private var start = -1.0
+        private var from = 0.0
+        private var target = 0.0
+        private var result: String? = null
+        private val SPIN = 4.0
+
+        override fun body() {
+            val cx = x + w / 2.0; val cy = y + 150.0; val r = 105.0
+            val k = if (start < 0) 0.0 else clamp((t - start) / SPIN, 0.0, 1.0)
+            val ease = 1 - (1 - k) * (1 - k) * (1 - k)
+            val angle = from + (target - from) * ease
+            drawWheel(cx, cy, r, angle, true)
+            // the pointer at the top
+            gfx.fillStroke(path { moveTo(cx - 12, cy - r - 14); lineTo(cx + 12, cy - r - 14); lineTo(cx, cy - r + 8); closePath() }, hex("ff4a4a"), 2.5f)
+            if (k >= 1 && result != null) {
+                text(result!!, x + w / 2, y + h - 74, hex("ffd23a"), 2, 1)
+                button(x + w / 2 - 60, y + h - 46, 120, 32, "AWESOME!", hex("4f9a1a")) { close() }
+            } else if (start < 0) {
+                button(x + w / 2 - 60, y + h - 46, 120, 32, "SPIN!", hex("f08a1a"), g.wheelReady(), id = "m:spin") {
+                    val (slot, msg) = g.spinWheel() ?: return@button
+                    host.sfx(Sfx.CHEST)
+                    start = t; result = msg
+                    // land the middle of [slot] under the pointer (top = -90 degrees)
+                    val n = WHEEL.size
+                    target = -PI / 2 - (slot + 0.5) * TAU / n + TAU * 5
+                }
+            }
+            if (start >= 0 && k >= 1 && !celebrated) { celebrated = true; host.sfx(if (result?.contains("gem") == true) Sfx.LEGENDARY else Sfx.ACHIEVEMENT) }
+        }
+        private var celebrated = false
+    }
+
+    // ------------------------------------------------------------------ tutorial
+    private class TutStep(val text: String, val target: () -> String?, val done: () -> Boolean, val button: String? = null)
+
+    private val tutSteps: List<TutStep> by lazy { listOf(
+        TutStep("Welcome to TapX! Move your mouse and LEFT-CLICK the monster to attack it. (10 hits)", { "tap-monster" }, { d.stats.taps >= 10 }),
+        TutStep("Monsters drop gold. In the HERO tab, press LEVEL UP to hit harder.", { if (tab != "hero") "tab:hero" else "tap" }, { d.tapLevel >= 3 }),
+        TutStep("Allies fight for you every second, even while you're away. Hire one in the ALLY tab!", { if (tab != "allies") "tab:allies" else "hero:pip" }, { d.heroes.isNotEmpty() }),
+        TutStep("Defeat 8 monsters, then beat the BOSS before its timer runs out to reach the next stage.", { null }, { d.stats.bestStage >= 2 }),
+        TutStep("Free stuff every day: spin the wheel and do quests in the QUEST tab. Scroll lists with your MOUSE WHEEL.", { "tab:quests" }, { tab == "quests" }),
+        TutStep("Use gems in the SHOP for chests, gamepasses and ranks. That's it, have fun!", { "tab:shop" }, { false }, "LET'S GO!"),
+    ) }
+
+    private fun tutorialUpdate() {
+        if (d.tutorial == 0 && d.stats.bestStage > 3) d.tutorial = -1 // veterans skip it
+        val step = tutSteps.getOrNull(d.tutorial) ?: return
+        if (step.done()) { d.tutorial = if (d.tutorial + 1 >= tutSteps.size) -1 else d.tutorial + 1; host.sfx(Sfx.ACHIEVEMENT) }
+    }
+
+    private fun drawTutorial() {
+        if (modal != null) return
+        val step = tutSteps.getOrNull(d.tutorial) ?: return
+        // ring + bouncing arrow on the thing to press
+        step.target()?.let { id -> buttons.firstOrNull { it.id == id && it.visible } }?.let { b ->
+            val pulse = 3 + sin(t * 6) * 2
+            gfx.stroke = stroke(4f); gfx.color = Color(255, 220, 60, 200)
+            gfx.draw(rrect(b.x - pulse, b.y - pulse, b.w + pulse * 2, b.h + pulse * 2, 10.0))
+            val ax = b.x + b.w / 2.0; val ay = b.y - 10 - kotlin.math.abs(sin(t * 4)) * 8
+            gfx.fillStroke(path { moveTo(ax - 10, ay - 16); lineTo(ax + 10, ay - 16); lineTo(ax, ay); closePath() }, hex("ffd23a"), 2.5f)
+        }
+        // speech bubble in the battle area
+        val bx = BX + 70; val by = BY + 128; val bw = BW - 140
+        val lines = wrap(step.text, bw - 24)
+        val bh = 34 + lines.size * 13 + (if (step.button != null) 30 else 0)
+        gfx.blit(Widgets.panel(bw, bh, hex("fff6dc"), hex("f2dcb0")), bx, by)
+        text("TUTORIAL ${d.tutorial + 1}/${tutSteps.size}", bx + 14, by + 10, hex("e8643a"))
+        lines.forEachIndexed { i, l -> text(l, bx + 14, by + 26 + i * 13, hex("3a2a20"), 1, 0, outline = false) }
+        button(bx + bw - 62, by + 6, 52, 18, "SKIP", hex("8a8ea6"), id = "tut:skip") { d.tutorial = -1 }
+        step.button?.let { button(bx + bw / 2 - 60, by + bh - 32, 120, 26, it, hex("f08a1a"), id = "tut:next") { d.tutorial = -1; host.sfx(Sfx.LEVEL_UP) } }
     }
 
     private fun confirmPrestige() {
@@ -1151,7 +1336,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             gfx.save { alpha(0.6); fill(Rectangle2D.Double(0.0, 0.0, this@GameScreen.width.toDouble(), this@GameScreen.height.toDouble()), Color.BLACK) }
             nextButtons.clear() // only the modal is clickable
             panel(x, y, w, h)
-            gfx.drawImage(Widgets.ribbon(w - 60, 30, hex("d08a1a")), x + 30, y - 8, null)
+            gfx.blit(Widgets.ribbon(w - 60, 30, hex("d08a1a")), x + 30, y - 8)
             text(title, x + w / 2, y - 1, Color.WHITE, 2, 1)
             body() // first, so a pop-up's main button gets the default highlight
             button(x + w - 34, y + 8, 26, 26, "X", hex("d0402a")) { close() }
@@ -1297,13 +1482,15 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
 }
 
-const val CURSOR_W = 15
-const val CURSOR_H = 21
+/** Cursor sprite size in device pixels. */
+val CURSOR_W: Int get() = 15 * Res.k
+val CURSOR_H: Int get() = 21 * Res.k
 /** The arrow cursor, drawn once: a white arrow with a solid black border (visible on any colour). */
 private val cursorImage: BufferedImage by lazy {
     val img = BufferedImage(CURSOR_W, CURSOR_H, BufferedImage.TYPE_INT_ARGB)
     val g = img.createGraphics()
     g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
+    g.scale(Res.k.toDouble(), Res.k.toDouble())
     g.translate(1.0, 1.0)
     g.color = java.awt.Color.WHITE
     g.fill(java.awt.geom.Path2D.Double().apply {
@@ -1314,7 +1501,8 @@ private val cursorImage: BufferedImage by lazy {
     val fill = Array(CURSOR_H) { y -> BooleanArray(CURSOR_W) { x -> (img.getRGB(x, y) ushr 24) >= 128 } }
     for (y in 0 until CURSOR_H) for (x in 0 until CURSOR_W) {
         if (fill[y][x]) continue
-        val edge = (-1..1).any { dy -> (-1..1).any { dx -> fill.getOrNull(y + dy)?.getOrNull(x + dx) == true } }
+        val r = Res.k
+        val edge = (-r..r).any { dy -> (-r..r).any { dx -> fill.getOrNull(y + dy)?.getOrNull(x + dx) == true } }
         if (edge) img.setRGB(x, y, 0xff101010.toInt())
     }
     img

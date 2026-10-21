@@ -9,6 +9,11 @@ crosshair, XP bar and locator bar sprites (waypoint ranges are also zeroed while
 head rotation (re-centred with relative rotation packets), wheel = ServerboundSetCarriedItemPacket;
 it drops item/inventory packets. The cursor is overlaid on the map colours every 25 ms, separately
 from the full frame (`screen-fps`, default 20). WASD/space/shift come from PlayerInputEvent.
+Screen: 896x512 layout units drawn at Res.k (2) map pixels each (14x8 maps); cached sprites are made with
+hiRes()/blit(). Only changed pixels are converted (Palette.convertChanged) and only dirty 128x16 bands sent;
+the right panel is re-rendered only on input / every 4th frame.
+Server features: ServerEvents (/event), StoreTools (flash sale, payments/piggy bank, promo codes), Essentials,
+TabList (+chat), Discord (DiscordSRV via reflection), SetStat (/tapx set), Cmds (code-registered commands).
 Look: polished mobile-game style (not pixel art): anti-aliased Java2D with gradients, Lilita One font
 (GameFont), glossy cached widgets (Widgets), ordered two-colour dithering to map colours (Palette).
 Rendering budget: `./gradlew preview` prints the frame cost (~7 ms render + ~2 ms palette). Characters

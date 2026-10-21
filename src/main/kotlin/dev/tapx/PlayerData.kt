@@ -49,6 +49,18 @@ class PlayerData {
     var skin: String? = null
     var login = LoginData()
     var quests = QuestData()
+
+    // --- added in 3.1
+    /** Store rank bought with gems (vip, pro, mvp, elite, titan, legend). Paid: kept on resets. */
+    var rank: String? = null
+    /** Tutorial step; -1 when finished or skipped. */
+    var tutorial = 0
+    /** Day number of the last daily wheel spin. */
+    var wheelDay = -1L
+    var discordLinked = false
+    var discordRewarded = false
+    /** Promo codes already redeemed. */
+    var promos = mutableSetOf<String>()
 }
 
 class LoginData {
@@ -102,4 +114,33 @@ class Deal {
 class Deals {
     var block = -1L
     var list = mutableListOf<Deal>()
+}
+
+/**
+ * A fresh start that keeps everything paid for with gems (gems, gamepasses, levelled purchases,
+ * skins, rank), the Discord link, used promo codes and settings. Used by the admin resets.
+ */
+fun PlayerData.resetKeepingPaid(): PlayerData {
+    val old = this
+    return PlayerData().apply {
+        name = old.name
+        gems = old.gems
+        owned = old.owned
+        shopLevels = old.shopLevels
+        bonusSp = 3 * (old.shopLevels["sp_pack"] ?: 0)
+        skins = old.skins
+        skin = old.skin
+        rank = old.rank
+        stats.gemsBought = old.stats.gemsBought
+        discordLinked = old.discordLinked
+        discordRewarded = old.discordRewarded
+        promos = old.promos
+        sound = old.sound
+        mult = old.mult
+        screenZoom = old.screenZoom
+        cursorSpeed = old.cursorSpeed
+        returnTo = old.returnTo
+        returnMode = old.returnMode
+        tutorial = -1
+    }
 }

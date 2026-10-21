@@ -2,11 +2,12 @@ name: TapX
 version: '${version}'
 main: dev.tapx.TapXPlugin
 api-version: '1.21'
-description: A Tap Titans-style idle clicker game played in chest menus. No resource pack needed.
+description: A Tap Titans-style idle game on a full-screen 2D map screen, plus server essentials, ranks, events and store tools.
 author: nazeltron
+softdepend: [LuckPerms, DiscordSRV, Essentials]
 commands:
   tapx:
-    description: Open TapX
+    description: Open TapX (admins - /tapx help)
     usage: /tapx [top|help|admin]
     aliases: [tap, taptitans]
     permission: tapx.play
@@ -18,5 +19,20 @@ permissions:
     description: Don't get put into the game automatically on join
     default: false
   tapx.admin:
-    description: Use /tapx admin commands
+    description: TapX admin commands (/tapx admin, /tapx gems, /tapx set, /event ...)
     default: op
+  tapx.cmd.*:
+    description: Every TapX essentials command (gmc, fly, tp, ban, vanish ...)
+    default: op
+  tapx.tag.owner:
+    description: OWNER tag in chat and the tab list
+    default: false
+  tapx.tag.admin:
+    description: ADMIN tag (ops get it automatically)
+    default: false
+  tapx.tag.mod:
+    description: MOD tag
+    default: false
+  tapx.tag.helper:
+    description: HELPER tag
+    default: false

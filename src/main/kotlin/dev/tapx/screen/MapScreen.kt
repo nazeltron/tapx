@@ -98,6 +98,25 @@ class MapScreen(
      */
     fun push(pixels: ByteArray): Int = push(pixels, 0, 0, width, height)
 
+    /** Mark the bands under a screen rectangle as changed (see [pushDirty]). */
+    fun markDirty(dirty: BooleanArray, x0: Int, y0: Int, x1: Int, y1: Int) {
+        val ya = maxOf(0, y0); val yb = minOf(height, y1); val xa = maxOf(0, x0); val xb = minOf(width, x1)
+        if (ya >= yb || xa >= xb) return
+        for (b in ya / BAND..(yb - 1) / BAND) for (c in xa / 128..(xb - 1) / 128) dirty[b * cols + c] = true
+    }
+
+    /** Upload only the 128x16 bands flagged in [dirty] (then clears the flags). */
+    fun pushDirty(pixels: ByteArray, dirty: BooleanArray): Int {
+        var bytes = 0
+        for (row in 0 until rows) for (band in 0 until 8) for (col in 0 until cols) {
+            val f = (row * 8 + band) * cols + col
+            if (!dirty[f]) continue
+            dirty[f] = false
+            bytes += push(pixels, col * 128, row * 128 + band * BAND, col * 128 + 128, row * 128 + band * BAND + BAND)
+        }
+        return bytes
+    }
+
     /** Like [push], but only looks for changes inside the screen rectangle [x0, x1) x [y0, y1). */
     fun push(pixels: ByteArray, x0: Int, y0: Int, x1: Int, y1: Int): Int {
         if (!spawned) return 0

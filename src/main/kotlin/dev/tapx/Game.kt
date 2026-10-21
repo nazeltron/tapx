@@ -18,6 +18,8 @@ interface GameEvents {
     fun onSkill(id: String, damage: Double) {}
     fun onPetAttack(damage: Double) {}
     fun onAllyAttack(id: String, damage: Double) {}
+    /** A store rank was bought (from the game thread). */
+    fun onRankChanged(rank: String?) {}
     fun onAchievement(group: AchGroup, target: Double, gems: Int) {}
 }
 
@@ -37,6 +39,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     var bossTimer = 0.0
     private var autoTapAcc = 0.0
     private var rainTimer = 0.0
+    private var farmTime = 0.0
     private var nextSpawn = 0.0
     /** Seconds until each ally's next attack. Allies strike once every [ALLY_COOLDOWN] seconds. */
     private val allyTimers = HashMap<String, Double>()
@@ -51,6 +54,9 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun st(id: String) = d.skillTree[id] ?: 0
     fun owns(id: String) = id in d.owned
     fun shopLevel(id: String) = d.shopLevels[id] ?: 0
+    fun rank() = rankDef(d.rank)
+    private fun ev(key: String) = ServerEvents.mult(key)
+    private fun pass(id: String, x: Double) = if (owns(id)) x else 1.0
 
     fun gearValue(id: String): Double {
         val g = gearDef(id) ?: return 0.0
@@ -72,17 +78,18 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun bossHp(stage: Int) = monsterHp(stage) * 6 * (1 - 0.04 * art("crown")) * (if (isLordStage(stage)) 3.0 else 1.0)
     fun goldMult() = (1 + 0.25 * art("idol")) * (1 + gearBonus("gold")) * (1 + petBonus("gold")) * (1 + 0.1 * st("r_greed")) *
         (if (owns("vip_gold")) 2.0 else 1.0) * (if (buffOn("golden_hour")) 2.0 else 1.0) *
+        ev("gold") * (rank()?.gold ?: 1.0) * pass("global2x", 2.0) * (if (d.discordLinked) 1.25 else 1.0) *
         (if (buffOn("midas")) skillPower("midas", skillLvl("midas")) else 1.0)
     fun killGold(stage: Int) = ceil(monsterHp(stage) * 0.2) * goldMult()
 
     private fun allDamageMult() = (1 + 0.25 * art("blade")) * (1 + 0.1 * st("w_vets")) * (if (owns("double_dmg")) 2.0 else 1.0) *
-        (if (buffOn("surge")) 2.0 else 1.0)
-    private fun bossDamageMult() = 1 + petBonus("boss") + 0.1 * st("k_bane") + 0.1 * art("slayer")
+        (if (buffOn("surge")) 2.0 else 1.0) * ev("damage") * (rank()?.damage ?: 1.0) * pass("global2x", 2.0)
+    private fun bossDamageMult() = 1 + petBonus("boss") + 0.1 * st("k_bane") + 0.1 * art("slayer") + (if (owns("boss_slayer")) 0.25 else 0.0)
 
     fun heroMilestoneMult(lvl: Int) = HERO_MILESTONES.filter { lvl >= it.first }.fold(1.0) { m, x -> m * x.second }
     fun heroBaseDps(h: Hero, lvl: Int) = if (lvl > 0) h.dps * lvl * heroMilestoneMult(lvl) else 0.0
     fun heroCost(h: Hero, lvl: Int) = h.cost * 1.075.pow(lvl) * max(0.5, 1 - 0.02 * st("w_bargain"))
-    fun allyMult() = (1 + 0.35 * art("banner")) * (1 + gearBonus("ally")) * (1 + petBonus("ally")) * (1 + 0.15 * st("w_rally")) * allDamageMult()
+    fun allyMult() = (1 + 0.35 * art("banner")) * (1 + gearBonus("ally")) * (1 + petBonus("ally")) * (1 + 0.15 * st("w_rally")) * allDamageMult() * pass("ally2x", 2.0)
     fun rawHeroDps() = HEROES.sumOf { heroBaseDps(it, heroLvl(it.id)) }
     fun heroDps(buffed: Boolean = true) =
         rawHeroDps() * allyMult() * (if (buffed && buffOn("warcry")) skillPower("warcry", skillLvl("warcry")) else 1.0)
@@ -98,18 +105,22 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             (if (buffed && buffOn("berserk")) skillPower("berserk", skillLvl("berserk")) else 1.0)
     }
 
-    fun critChance() = min(0.9, 0.02 + 0.01 * art("clover") + 0.005 * st("k_eye") + (if (buffOn("eagle")) skillPower("eagle", skillLvl("eagle")) / 100 else 0.0))
-    fun critMult() = 8 * (1 + 0.5 * art("fang")) * (1 + gearBonus("crit")) * (1 + petBonus("crit")) * (1 + 0.25 * st("k_heavy"))
-    fun bossTime() = BOSS_TIME + 2 * art("hourglass")
+    fun critChance() = min(0.9, 0.02 + 0.01 * art("clover") + 0.005 * st("k_eye") + (if (owns("crit_master")) 0.05 else 0.0) +
+        (if (buffOn("eagle")) skillPower("eagle", skillLvl("eagle")) / 100 else 0.0))
+    fun critMult() = 8 * (1 + 0.5 * art("fang")) * (1 + gearBonus("crit")) * (1 + petBonus("crit")) * (1 + 0.25 * st("k_heavy")) * pass("crit_master", 1.5)
+    fun bossTime() = BOSS_TIME + 2 * art("hourglass") + (if (owns("boss_slayer")) 10 else 0)
     fun maxMana() = 50 + 5 * art("crystal") + 5 * st("s_deep") + (if (owns("mana_well")) 25 else 0)
-    fun manaRegen() = (1.0 / 3) * (1 + 0.1 * art("crystal")) * (1 + petBonus("mana")) * (1 + 0.1 * st("s_flow"))
+    fun manaRegen() = (1.0 / 3) * (1 + 0.1 * art("crystal")) * (1 + petBonus("mana")) * (1 + 0.1 * st("s_flow")) * ev("mana") * pass("arcane_flow", 2.0)
     fun spellDuration() = 30.0 + 4 * art("tome") + 3 * st("s_long")
     fun thunderMult() = skillPower("thunder", skillLvl("thunder")) * (1 + 0.25 * st("s_storm") + 0.4 * art("totem") + petBonus("thunder"))
     private fun autoTapRate() =
-        (if (buffOn("frenzy")) skillPower("frenzy", skillLvl("frenzy")) else 0.0) + (if (buffOn("phantom")) 6.0 else 0.0) + shopLevel("auto_tap")
-    fun mimicChance() = 0.025 + 0.01 * art("key") + 0.005 * st("r_mimic")
+        (if (buffOn("frenzy")) skillPower("frenzy", skillLvl("frenzy")) else 0.0) + (if (buffOn("phantom")) 6.0 else 0.0) + shopLevel("auto_tap") +
+            (rank()?.autoTaps ?: 0)
+    fun mimicChance() = (0.025 + 0.01 * art("key") + 0.005 * st("r_mimic")) * ev("luck") * pass("lucky", 2.0)
     fun skipChance() = 0.02 * art("boots") + 0.01 * st("r_warp")
-    fun wispRate() = 1 + 0.08 * art("lantern")
+    fun wispRate() = (1 + 0.08 * art("lantern")) * ev("luck") * pass("lucky", 2.0)
+    /** Taps per pet attack. */
+    fun petCharge() = if (owns("pet_trainer")) 11 else PET_CHARGE
 
     // ---------------------------------------------------------- skill tree
     fun spTotal() = d.stats.bestStage / 20 + d.stats.prestiges * 2 + d.bonusSp
@@ -122,10 +133,11 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     }
 
     fun relicsFor(stage: Int) =
-        if (stage < PRESTIGE_STAGE) 0L else floor((stage - 15.0).pow(1.6) / 6 * (1 + 0.1 * d.stats.prestiges)).toLong()
+        if (stage < PRESTIGE_STAGE) 0L else floor((stage - 15.0).pow(1.6) / 6 * (1 + 0.1 * d.stats.prestiges) *
+            ev("relics") * pass("relics2x", 2.0) * pass("global2x", 2.0)).toLong()
     fun artifactCost(a: Artifact, lvl: Int) = ceil(a.base * 1.45.pow(lvl)).toLong()
     fun skillCost(s: Skill, lvl: Int) = s.cost * 12.0.pow(lvl)
-    fun petDamage() = if (d.activePet != null) tapDamage() * (5 + 3 * petLevel(d.activePet)) * (1 + 0.3 * art("collar")) else 0.0
+    fun petDamage() = if (d.activePet != null) tapDamage() * (5 + 3 * petLevel(d.activePet)) * (1 + 0.3 * art("collar")) * pass("pet_trainer", 2.0) else 0.0
 
     // Bulk buying for geometric costs.
     fun bulkCost(c0: Double, r: Double, n: Int) = c0 * (r.pow(n) - 1) / (r - 1)
@@ -214,7 +226,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         dealDamage(dmg)
         if (d.activePet != null && !auto) {
             d.petCharge++
-            if (d.petCharge >= PET_CHARGE) {
+            if (d.petCharge >= petCharge()) {
                 d.petCharge = 0
                 val pd = petDamage()
                 events.onPetAttack(pd)
@@ -246,6 +258,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             if (e.value <= 0) it.remove()
         }
         d.mana = min(maxMana().toDouble(), d.mana + manaRegen() * dt)
+        // Auto Boss gamepass: after a failed boss, try again by itself every 20 seconds
+        if (d.farming && owns("auto_boss")) { farmTime += dt; if (farmTime >= 20) { farmTime = 0.0; fightBoss() } } else farmTime = 0.0
         if (buffOn("rain")) {
             rainTimer -= dt
             if (rainTimer <= 0) { rainTimer = 3.0; autoLevelAlly() }
@@ -382,7 +396,10 @@ class Game(var d: PlayerData, private val events: GameEvents) {
 
     // ---------------------------------------------------------- gem shop
     /** Levelled items cost 50% more for every level already bought. */
-    fun shopPrice(item: ShopItem) = if (item.kind == "level") item.gems * (2 + shopLevel(item.id)) / 2 else item.gems
+    fun shopPrice(item: ShopItem) = FlashSale.price(if (item.kind == "level") item.gems * (2 + shopLevel(item.id)) / 2 else item.gems)
+    fun chestPrice(c: Chest) = FlashSale.price(c.gems)
+    fun dealPrice(deal: Deal) = FlashSale.price(deal.gems)
+    fun skinPrice(s: Skin) = FlashSale.price(s.gems)
 
     fun shopBought(item: ShopItem) = when (item.kind) {
         "perm" -> owns(item.id)
@@ -425,11 +442,38 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         return msg
     }
 
+    // ---------------------------------------------------------- ranks & gamepass bundle
+    /** Gems to reach [r] from the current rank (you only pay the difference). */
+    fun rankUpgradeCost(r: Rank) = FlashSale.price(max(0, r.gems - (rank()?.gems ?: 0)))
+
+    fun buyRank(key: String): String? {
+        val r = rankDef(key) ?: return null
+        if (rankIndex(d.rank) >= rankIndex(key)) return null
+        val cost = rankUpgradeCost(r)
+        if (d.gems < cost) return null
+        d.gems -= cost
+        d.rank = key
+        events.onRankChanged(key)
+        return "${r.name} RANK UNLOCKED!"
+    }
+
+    /** Every one-time gamepass not owned yet, sold together at 25% off. */
+    fun bundleItems() = SHOP_ITEMS.filter { it.section == "perm" && it.kind == "perm" && !owns(it.id) }
+    fun bundlePrice() = FlashSale.price((bundleItems().sumOf { it.gems } * 0.75).toInt())
+
+    fun buyBundle(): String? {
+        val items = bundleItems()
+        if (items.size < 2 || d.gems < bundlePrice()) return null
+        d.gems -= bundlePrice()
+        items.forEach { d.owned += it.id }
+        return "${items.size} GAMEPASSES UNLOCKED!"
+    }
+
     fun buySkin(id: String): Boolean {
         val skin = skinDef(id) ?: return false
         if (id in d.skins) { d.skin = if (d.skin == id) null else id; return true } // toggle wearing it
-        if (d.gems < skin.gems) return false
-        d.gems -= skin.gems
+        if (d.gems < skinPrice(skin)) return false
+        d.gems -= skinPrice(skin)
         d.skins += id
         d.skin = id
         return true
@@ -459,8 +503,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
 
     fun openChest(id: String): List<GearRoll>? {
         val c = CHESTS.first { it.id == id }
-        if (d.gems < c.gems) return null
-        d.gems -= c.gems
+        if (d.gems < chestPrice(c)) return null
+        d.gems -= chestPrice(c)
         return openChestFree(c)
     }
 
@@ -472,7 +516,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun openFreeChest(): List<GearRoll>? {
         if (!freeChestReady()) return null
         d.freeChestAt = System.currentTimeMillis() + FREE_CHEST_MS
-        return listOf(grantGear(rollGear(CHESTS[0].odds)))
+        return listOf(grantGear(rollGear(CHESTS[if (owns("lucky")) 1 else 0].odds)))
     }
 
     fun equip(id: String) {
@@ -523,8 +567,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
 
     fun buyDeal(i: Int): Boolean {
         val deal = currentDeals().list.getOrNull(i) ?: return false
-        if (deal.bought || d.gems < deal.gems) return false
-        d.gems -= deal.gems
+        if (deal.bought || d.gems < dealPrice(deal)) return false
+        d.gems -= dealPrice(deal)
         deal.bought = true
         grantEggs(deal.pet, deal.eggs)
         return true
@@ -564,6 +608,12 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             it.skin = old.skin
             it.login = old.login
             it.quests = old.quests
+            it.rank = old.rank
+            it.tutorial = old.tutorial
+            it.wheelDay = old.wheelDay
+            it.discordLinked = old.discordLinked
+            it.discordRewarded = old.discordRewarded
+            it.promos = old.promos
         }
         d.stats.prestiges++
         d.stats.relicsEarned += gained
@@ -652,6 +702,29 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         return "+2 gems"
     }
 
+    // ---------------------------------------------------------- daily wheel
+    fun wheelReady() = d.wheelDay != today()
+
+    /** Spin the daily wheel: picks and grants a prize. Returns (slot index, message) or null if spun today. */
+    fun spinWheel(): Pair<Int, String>? {
+        if (!wheelReady()) return null
+        d.wheelDay = today()
+        val bonus = rank()?.dailyBonus ?: 1.0
+        var r = Random.nextDouble()
+        val slot = WHEEL.indices.first { i -> r -= WHEEL[i].second; r < 0 || i == WHEEL.lastIndex }
+        val msg = when (slot) {
+            0 -> { val g = killGold(d.stage) * 200 * bonus; addGold(g); "+${fmt(g)} gold" }
+            1 -> { grantRandomEggs(3); "+3 pet eggs" }
+            2 -> { val n = (max(3L, d.maxStage / 10L) * bonus).toLong(); d.relics += n; "+$n relics" }
+            3 -> { d.buffs["golden_hour"] = (d.buffs["golden_hour"] ?: 0.0) + 900; "Golden Hour for 15 min" }
+            4 -> { d.mana = maxMana().toDouble(); d.buffs["surge"] = (d.buffs["surge"] ?: 0.0) + 300; "Mana + Power Surge" }
+            5 -> { val g = killGold(d.stage) * 600 * bonus; addGold(g); "+${fmt(g)} gold" }
+            6 -> { val rolls = openChestFree(CHESTS[1]); "${rolls.size} pieces of gear" }
+            else -> { d.gems += 3; "+3 gems!" }
+        }
+        return slot to msg
+    }
+
     // ---------------------------------------------------------- wisps
     fun wispReward(): String {
         d.stats.wisps++
@@ -665,7 +738,8 @@ class Game(var d: PlayerData, private val events: GameEvents) {
 
     // ---------------------------------------------------------- time away
     fun applyOffline(secondsAway: Double, maxHours: Double): Double {
-        val secs = min(secondsAway, (if (owns("offline_master")) max(24.0, maxHours) else maxHours) * 3600)
+        val hours = max(maxHours, (rank()?.offlineHours ?: 0).toDouble())
+        val secs = min(secondsAway, (if (owns("offline_master")) max(24.0, hours) else hours) * 3600)
         val it = d.buffs.entries.iterator()
         while (it.hasNext()) {
             val e = it.next()

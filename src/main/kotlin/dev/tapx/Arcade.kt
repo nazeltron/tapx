@@ -109,8 +109,8 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         val byHeight = rows / (2 * tan(fov / 2))
         val byWidth = cols / (2 * tan(fov / 2) * aspect)
         val distance = minOf(byHeight, byWidth) / (if (zoom > 0) zoom else 1.0)
-        // frames: top row at y=102, columns sx-3..sx+3, hanging in the z=0 block row facing south
-        return Location(world, slot * 64 + 0.5, 101.0, 1.0 / 16 + distance, 180f, 0f)
+        // frames: top row at y=102 going down, columns centred on the slot, hanging in the z=0 block row
+        return Location(world, slot * 64 - cols / 2 + cols / 2.0, 103.0 - rows / 2.0, 1.0 / 16 + distance, 180f, 0f)
     }
 
     private fun screenOrigin(slot: Int) = BlockPos(slot * 64 - cols / 2, 102, 0)
@@ -158,7 +158,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
                 if (!isPlaying(p)) return@Runnable
                 lockCamera(p)
                 val border = Palette.toMap(0x0b0d1a)
-                s.start(MapScreen(p, screenOrigin(slot), Direction.NORTH, cols, rows, MAP_ID_BASE, pad = 2, borderColor = border))
+                s.start(MapScreen(p, screenOrigin(slot), Direction.NORTH, cols, rows, MAP_ID_BASE, pad = 3, borderColor = border))
             }, 10L)
             plugin.server.scheduler.runTaskLater(plugin, Runnable { if (isPlaying(p)) lockCamera(p, resend = true) }, 40L)
         }

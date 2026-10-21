@@ -22,10 +22,7 @@ object Widgets {
 
     private fun make(key: String, w: Int, h: Int, draw: Graphics2D.() -> Unit): BufferedImage {
         synchronized(cache) { cache[key]?.let { return it } }
-        val img = BufferedImage(maxOf(1, w), maxOf(1, h), BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+        val (img, g) = hiRes(w, h)
         g.draw()
         g.dispose()
         synchronized(cache) { cache[key] = img }

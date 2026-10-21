@@ -14,6 +14,29 @@ import kotlin.math.sin
 // Small drawing toolkit shared by the art and UI code.
 
 const val TAU = Math.PI * 2
+
+/**
+ * Device pixels per layout unit. The game is laid out in 896x512 units; with k = 2 it is drawn on
+ * 1792x1024 map pixels (14x8 maps), which looks smooth instead of pixelated. Set once at startup.
+ */
+object Res { @Volatile var k = 2 }
+
+/** Draw an image made by [hiRes] (k device pixels per unit) at its size in layout units. */
+fun Graphics2D.blit(img: java.awt.image.BufferedImage, x: Int, y: Int) {
+    drawImage(img, x, y, img.width / Res.k, img.height / Res.k, null)
+}
+
+/** A transparent (or opaque) image of [w] x [h] layout units, with a Graphics already scaled to units. */
+fun hiRes(w: Int, h: Int, opaque: Boolean = false): Pair<java.awt.image.BufferedImage, Graphics2D> {
+    val k = Res.k
+    val img = java.awt.image.BufferedImage(maxOf(1, w) * k, maxOf(1, h) * k,
+        if (opaque) java.awt.image.BufferedImage.TYPE_INT_RGB else java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val g = img.createGraphics()
+    g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+    g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+    g.scale(k.toDouble(), k.toDouble())
+    return img to g
+}
 val OUT = Color(0x1d, 0x1a, 0x26)
 
 fun hex(s: String): Color = Color(s.removePrefix("#").toInt(16))

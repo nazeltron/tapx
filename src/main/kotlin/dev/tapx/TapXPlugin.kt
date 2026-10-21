@@ -25,6 +25,12 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+/** Coloured rank tag for chat/tab, e.g. "[VIP]". */
+fun rankTag(rank: String?): String {
+    val r = rankDef(rank) ?: return ""
+    return if (r.color == "rainbow") "<b><rainbow>[${r.name}]</rainbow></b>" else "<b><${r.color}>[${r.name}]</${r.color}></b>"
+}
+
 class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
     private val gson: Gson = GsonBuilder().create()
     private val sessions = ConcurrentHashMap<UUID, Session>()
@@ -53,6 +59,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         playersDir = File(dataFolder, "players").apply { mkdirs() }
         pendingFile = File(dataFolder, "pending-gems.yml")
         YamlConfiguration.loadConfiguration(pendingFile).let { y -> y.getKeys(false).forEach { pendingGems[it] = y.getLong(it) } }
+        dev.tapx.screen.Res.k = config.getInt("screen-resolution", 2).coerceIn(1, 2)
         Palette.toMap(0) // build the colour table now rather than on the first frame
         val n = AtomicInteger()
         gameThreads = Executors.newScheduledThreadPool(config.getInt("render-threads", 2).coerceIn(1, 8)) {
@@ -64,8 +71,17 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         loadLeaderboard()
         server.pluginManager.registerEvents(this, this)
         server.pluginManager.registerEvents(arcade, this)
+        server.pluginManager.registerEvents(pack, this)
         getCommand("tapx")?.setExecutor(this)
         getCommand("tapx")?.tabCompleter = this
+        Cmds.plugin = this
+        ServerEvents.enable(this)
+        FlashSale.load(this)
+        Payments.enable(this)
+        Promos.enable(this)
+        Essentials.enable(this)
+        TabList.enable(this)
+        Discord.enable(this)
         server.onlinePlayers.forEach(::loadSession)
         val every = config.getLong("autosave-minutes", 5).coerceAtLeast(1) * 60 * 20
         server.scheduler.runTaskTimer(this, Runnable { sessions.values.forEach(::save) }, every, every)
@@ -185,6 +201,7 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
             }
             "admin" -> admin(sender, args.drop(1))
             "gems" -> gems(sender, args.drop(1))
+            "reset", "resetall", "set", "stats", "rank", "pass", "gamepass", "promo", "payment", "flashsale", "piggybank" -> adminTools(sender, args.toList())
             else -> help(sender)
         }
         return true
@@ -200,6 +217,11 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
             reply(sender, "<yellow>/tapx admin stage <player> <stage>")
             reply(sender, "<yellow>/tapx admin reset <player>")
             reply(sender, "<yellow>/tapx gems <give|take|set|check> <player> [amount] <gray>- works offline too (for store purchases)")
+            reply(sender, "<yellow>/tapx reset <player> <gray>/ <yellow>/tapx resetall confirm <gray>- wipe progress, keep gems and everything bought with gems")
+            reply(sender, "<yellow>/tapx set <player> <stat> <value> <gray>/ <yellow>/tapx stats <player>")
+            reply(sender, "<yellow>/tapx rank <set|remove> <player> [rank] <gray>/ <yellow>/tapx pass <add|remove> <player> <pass>")
+            reply(sender, "<yellow>/tapx promo <create|delete|list> <gray>/ <yellow>/tapx payment <player> <usd> [package] <gray>/ <yellow>/tapx flashsale <percent> <minutes>|stop")
+            reply(sender, "<yellow>/event <gray>- server boosts and giveaways")
         }
     }
 
@@ -324,6 +346,144 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         writer.execute { f.appendText("${LocalDateTime.now()} $line\n") }
     }
 
+    // ---------------------------------------------------------- editing any player
+    /**
+     * Change a player's save wherever it is: online (on their game thread), offline (their file), and
+     * [then] gets a result line on the main thread. Returns false if there's no save at all.
+     */
+    fun editPlayer(name: String, then: (String) -> Unit = {}, edit: (PlayerData, Session?) -> String): Boolean {
+        val online = Bukkit.getPlayerExact(name)
+        val s = online?.let { sessions[it.uniqueId] }
+        if (s != null) {
+            s.post { val r = edit(s.d, s); save(s); server.scheduler.runTask(this, Runnable { then(r) }) }
+            return true
+        }
+        val uuid = Bukkit.getOfflinePlayerIfCached(name)?.uniqueId ?: findUuidByName(name) ?: return false
+        val f = file(uuid)
+        if (!f.exists()) return false
+        writer.execute {
+            val d = gson.fromJson(f.readText(), PlayerData::class.java)
+            val r = edit(d, null)
+            writeNow(uuid, gson.toJson(d))
+            server.scheduler.runTask(this, Runnable { then(r) })
+        }
+        return true
+    }
+
+    /** Give gems (online, offline, or queued for a first join). [paid] counts it as bought (store). */
+    fun giveGems(name: String, amount: Long, reason: String, paid: Boolean) {
+        logGems("$reason give $name $amount")
+        val found = editPlayer(name, { }) { d, s ->
+            d.gems += amount
+            if (paid) d.stats.gemsBought += amount
+            s?.screen?.gemsReceived(amount)
+            ""
+        }
+        if (!found) { pendingGems.merge(name.lowercase(), amount, Long::plus); savePending() }
+    }
+
+    /** A store rank changed: LuckPerms group (optional) and the tab list. Any thread. */
+    fun rankChanged(p: Player, rank: String?) = server.scheduler.runTask(this, Runnable {
+        if (config.getBoolean("ranks.luckperms", true) && server.pluginManager.isPluginEnabled("LuckPerms")) {
+            for (r in RANKS) server.dispatchCommand(server.consoleSender, "lp user ${p.name} parent remove ${r.key}")
+            if (rank != null) server.dispatchCommand(server.consoleSender, "lp user ${p.name} parent add $rank")
+        }
+        if (rank != null) Bukkit.broadcast(mm("$PREFIX<white>${p.name} <gray>just bought the ${rankTag(rank)} <gray>rank!"))
+        TabList.refresh(p)
+    })
+
+    private fun adminTools(sender: CommandSender, args: List<String>) {
+        if (!sender.hasPermission("tapx.admin")) { reply(sender, "<red>You don't have permission."); return }
+        val sub = args[0].lowercase()
+        val who = args.getOrNull(1)
+        fun done(msg: String) = sender.say(msg)
+        fun noSave(n: String) = sender.say("<red>$n has no TapX save.")
+        when (sub) {
+            "reset" -> {
+                who ?: return sender.say("<red>Usage: /tapx reset <player>")
+                if (!editPlayer(who, ::done) { d, s ->
+                        val fresh = d.resetKeepingPaid()
+                        if (s != null) { s.game.d = fresh; s.game.monster = null } else copyInto(fresh, d)
+                        "<green>Reset $who (kept gems and gem purchases)."
+                    }) noSave(who)
+            }
+            "resetall" -> {
+                if (who != "confirm") return sender.say("<red>This wipes EVERY player's progress (gems, gamepasses, ranks and skins are kept). Type <white>/tapx resetall confirm")
+                for (s in sessions.values) s.post { s.game.d = s.d.resetKeepingPaid(); s.game.monster = null; save(s) }
+                val online = sessions.keys.toSet()
+                writer.execute {
+                    var n = 0
+                    playersDir.listFiles { f -> f.name.endsWith(".json") && !f.name.contains(".broken") }?.forEach { f ->
+                        val id = runCatching { UUID.fromString(f.nameWithoutExtension) }.getOrNull() ?: return@forEach
+                        if (id in online) return@forEach
+                        val d = runCatching { gson.fromJson(f.readText(), PlayerData::class.java) }.getOrNull() ?: return@forEach
+                        writeNow(id, gson.toJson(d.resetKeepingPaid())); n++
+                    }
+                    top.clear()
+                    server.scheduler.runTask(this, Runnable {
+                        sender.say("<green>Reset ${sessions.size} online and $n offline players. Gems and gem purchases were kept.")
+                        Bukkit.broadcast(mm("$PREFIX<yellow><b>NEW SEASON!</b> <white>Everyone's progress was reset. Your gems, ranks and gamepasses are safe. Good luck!"))
+                    })
+                }
+            }
+            "set" -> {
+                val stat = args.getOrNull(2)?.lowercase(); val value = args.getOrNull(3)
+                if (who == null || stat == null || value == null) return sender.say("<red>Usage: /tapx set <player> <stat> <value>  <gray>(stats: ${STAT_NAMES.joinToString()})")
+                if (!editPlayer(who, ::done) { d, s -> setStat(d, stat, value).also { if (s != null) s.game.monster = null } }) noSave(who)
+            }
+            "stats" -> {
+                who ?: return sender.say("<red>Usage: /tapx stats <player>")
+                if (!editPlayer(who, ::done) { d, _ ->
+                        "<gold>$who: <gray>stage <white>${d.stage}<gray> (best ${d.stats.bestStage}), gold <white>${fmt(d.gold)}<gray>, gems <white>${d.gems}<gray>, relics <white>${d.relics}" +
+                            "<gray>, tap lv <white>${d.tapLevel}<gray>, prestiges <white>${d.stats.prestiges}<gray>, rank <white>${d.rank ?: "none"}<gray>, passes <white>${d.owned.joinToString().ifEmpty { "none" }}" +
+                            "<gray>, kills <white>${d.stats.kills}<gray>, taps <white>${d.stats.taps}<gray>, bought gems <white>${d.stats.gemsBought}"
+                    }) noSave(who)
+            }
+            "rank" -> {
+                val target = args.getOrNull(2)
+                val rank = args.getOrNull(3)?.lowercase()
+                if (who !in setOf("set", "remove") || target == null || (who == "set" && rankDef(rank) == null))
+                    return sender.say("<red>Usage: /tapx rank set <player> <${RANKS.joinToString("|") { it.key }}> <gray>or <red>/tapx rank remove <player>")
+                val newRank = if (who == "set") rank else null
+                if (!editPlayer(target, ::done) { d, _ -> d.rank = newRank; "<green>$target's rank is now ${newRank ?: "none"}." }) noSave(target)
+                else Bukkit.getPlayerExact(target)?.let { rankChanged(it, newRank) }
+            }
+            "pass", "gamepass" -> {
+                val target = args.getOrNull(2); val pass = args.getOrNull(3)?.lowercase()
+                if (who !in setOf("add", "remove") || target == null || SHOP_ITEMS.none { it.id == pass && it.kind == "perm" })
+                    return sender.say("<red>Usage: /tapx pass <add|remove> <player> <${SHOP_ITEMS.filter { it.kind == "perm" }.joinToString("|") { it.id }}>")
+                if (!editPlayer(target, ::done) { d, _ -> if (who == "add") d.owned += pass!! else d.owned -= pass!!; "<green>Done: $who $pass for $target." }) noSave(target)
+            }
+            "promo" -> when (who) {
+                "create" -> {
+                    val code = args.getOrNull(2); val uses = args.getOrNull(3)?.toIntOrNull(); val hours = args.getOrNull(4)?.toDoubleOrNull()
+                    if (code == null || uses == null || hours == null || args.size < 6) return sender.say("<red>Usage: /tapx promo create <code> <maxUses|0> <hours|0> <rewards...>  <gray>rewards: ${Promos.SYNTAX}")
+                    val err = Promos.create(code, uses, hours, args.drop(5).joinToString(" "))
+                    sender.say(err?.let { "<red>$it" } ?: "<green>Created code <white>$code<green>. Players use <white>/promo $code")
+                }
+                "delete" -> sender.say(if (args.getOrNull(2)?.let(Promos::delete) == true) "<green>Deleted." else "<red>No such code.")
+                else -> { sender.say("<gold>Promo codes:"); Promos.list().forEach { sender.say("<gray>$it") } }
+            }
+            "payment" -> {
+                val usd = args.getOrNull(2)?.toDoubleOrNull()
+                if (who == null || usd == null) return sender.say("<red>Usage: /tapx payment <player> <usd> [package name]")
+                Payments.payment(who, usd, args.drop(3).joinToString(" "))
+            }
+            "piggybank" -> sender.sayRaw(Payments.piggyText())
+            "flashsale" -> {
+                if (who == "stop") { FlashSale.stop(this); return sender.say("<green>Flash sale stopped.") }
+                val pct = who?.toIntOrNull(); val min = args.getOrNull(2)?.toDoubleOrNull()
+                if (pct == null || min == null) return sender.say("<red>Usage: /tapx flashsale <percent> <minutes> <gray>or <red>/tapx flashsale stop")
+                FlashSale.start(this, pct, min)
+            }
+        }
+    }
+
+    /** Copy a fresh save into an existing object (offline edits change the object in place). */
+    private fun copyInto(from: PlayerData, to: PlayerData) {
+        for (f in PlayerData::class.java.declaredFields) { f.isAccessible = true; f.set(to, f.get(from)) }
+    }
+
     private fun reply(sender: CommandSender, text: String): Boolean {
         sender.sendMessage(mm(text))
         return true
@@ -333,13 +493,25 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         val admin = sender.hasPermission("tapx.admin") && args[0].equals("admin", true)
         val gemsCmd = sender.hasPermission("tapx.admin") && args[0].equals("gems", true)
         val opts = when (args.size) {
-            1 -> listOf("play", "top", "help") + if (sender.hasPermission("tapx.admin")) listOf("leave", "admin", "gems") else emptyList()
+            1 -> listOf("play", "top", "help") + if (sender.hasPermission("tapx.admin"))
+                listOf("leave", "admin", "gems", "reset", "resetall", "set", "stats", "rank", "pass", "promo", "payment", "flashsale", "piggybank") else emptyList()
             2 -> when {
                 admin -> listOf("give", "stage", "reset")
                 gemsCmd -> listOf("give", "take", "set", "check")
+                args[0].lowercase() in setOf("reset", "set", "stats") -> Bukkit.getOnlinePlayers().map { it.name }
+                args[0].equals("rank", true) -> listOf("set", "remove")
+                args[0].equals("pass", true) || args[0].equals("gamepass", true) -> listOf("add", "remove")
+                args[0].equals("promo", true) -> listOf("create", "delete", "list")
+                args[0].equals("flashsale", true) -> listOf("10", "25", "50", "stop")
+                args[0].equals("resetall", true) -> listOf("confirm")
                 else -> emptyList()
             }
-            3 -> if (admin || gemsCmd) Bukkit.getOnlinePlayers().map { it.name } else emptyList()
+            3 -> when {
+                admin || gemsCmd -> Bukkit.getOnlinePlayers().map { it.name }
+                args[0].equals("set", true) -> STAT_NAMES
+                args[0].equals("rank", true) && args[1].equals("set", true) -> emptyList()
+                else -> emptyList()
+            }
             4 -> if (admin && args[1].equals("give", true)) listOf("gold", "gems", "relics") else emptyList()
             else -> emptyList()
         }

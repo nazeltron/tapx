@@ -53,6 +53,14 @@ tasks.register<JavaExec>("sim") {
     mainClass.set("dev.tapx.SimKt")
     args((project.findProperty("args") as String? ?: "3 5").split(" "))
 }
+tasks.register<JavaExec>("blitBench") {
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.tapx.BlitBenchKt")
+}
+tasks.register<JavaExec>("packCheck") {
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.tapx.PackCheckKt")
+}
 tasks.register<JavaExec>("dumpMapColors") {
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("dev.tapx.DumpMapColorsKt")

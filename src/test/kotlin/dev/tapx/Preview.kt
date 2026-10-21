@@ -45,14 +45,15 @@ fun main(args: Array<String>) {
         override fun setZoom(zoom: Double) {}
     }
     screen = GameScreen(host, 896, 512)
-    val ids = ByteArray(896 * 512)
+    val PW = screen.pw; val PH = screen.ph
+    val ids = ByteArray(PW * PH)
     fun shot(name: String) {
         screen.render()
-        Palette.convert(screen.pixels, ids, 896)
+        Palette.convert(screen.pixels, ids, PW)
         screen.overlayCursor(ids)
-        val img = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)
+        val img = BufferedImage(PW, PH, BufferedImage.TYPE_INT_RGB)
         for (i in ids.indices) {
-            img.setRGB(i % 896, i / 896, MapColor.getColorFromPackedId(ids[i].toInt() and 255))
+            img.setRGB(i % PW, i / PW, MapColor.getColorFromPackedId(ids[i].toInt() and 255))
         }
         ImageIO.write(img, "png", File(out, "$name.png"))
         ImageIO.write(screen.image, "png", File(out, "$name-raw.png"))
@@ -62,6 +63,10 @@ fun main(args: Array<String>) {
     data.gems = 2400
     step(3)
     repeat(4) { game.tap(false); step(1) }
+    shot("tutorial")
+    data.tutorial = -1
+    ServerEvents.startQuietly(ServerEvents.TYPES.map { it.key }, 30.0, 2.0)
+    step(2)
     shot("battle-hero")
     screen.mouse(-12.5, 16.0); shot("hover-monster")
     screen.mouse(12.5, -16.0)
@@ -74,6 +79,9 @@ fun main(args: Array<String>) {
     tab(2); pointAt(820, 140); shot("skills")
     clickAt(840, 140); clickAt(840, 140); shot("skills-bought")
     tab(6); pointAt(830, 300); shot("quests")
+    tab(6); clickAt(840, 112 + 26 + 64 + 52 + 22); step(3); shot("wheel"); clickAt(448, 256 + 170 - 30); step(12); shot("wheel-spin"); step(30); shot("wheel-result")
+    screen.input(false, false, false, false, false, true, false, false); step(1)
+    tab(7); repeat(3) { screen.wheel(1) }; step(1); shot("shop-ranks"); repeat(3) { screen.wheel(-1) }
     tab(7); shot("shop")
     repeat(8) { clickAt(888 - 30, 6 + 88 + 10) }; pointAt(820, 300); shot("shop-scrolled")
     repeat(30) { clickAt(888 - 30, 6 + 88 + 10) }; pointAt(820, 300); shot("shop-skins")
@@ -85,12 +93,12 @@ fun main(args: Array<String>) {
     screen.input(false, false, false, false, false, true, false, false); step(1)
     // Which pixels change between idle frames? (red = changed) -> bandwidth hot spots
     data.stage = 3; game.monster = null; step(20)
-    val diff = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)
+    val diff = BufferedImage(PW, PH, BufferedImage.TYPE_INT_RGB)
     var changed = 0
     repeat(10) {
-        screen.render(); Palette.convert(screen.pixels, ids, 896); val a = ids.copyOf()
-        step(1); screen.render(); Palette.convert(screen.pixels, ids, 896)
-        for (i in ids.indices) if (ids[i] != a[i]) { diff.setRGB(i % 896, i / 896, 0xff0000); changed++ }
+        screen.render(); Palette.convert(screen.pixels, ids, PW); val a = ids.copyOf()
+        step(1); screen.render(); Palette.convert(screen.pixels, ids, PW)
+        for (i in ids.indices) if (ids[i] != a[i]) { diff.setRGB(i % PW, i / PW, 0xff0000); changed++ }
     }
     println("avg changed pixels per idle frame: ${changed / 10}")
     ImageIO.write(diff, "png", File(out, "idle-diff.png"))
@@ -110,12 +118,15 @@ fun main(args: Array<String>) {
     }
     // how long one full frame takes (render + palette), for picking the fps
     data.stage = 34; game.monster = null; step(10)
-    repeat(300) { step(1); screen.render(); Palette.convert(screen.pixels, ids, 896) }
+    repeat(300) { step(1); screen.render(); Palette.convert(screen.pixels, ids, PW) }
     var tr = 0L; var tc = 0L; var tu = 0L
+    val prev = IntArray(PW * PH) { -1 }; val dirty = BooleanArray(PW / 128 * (PH / 128) * 8)
     repeat(300) {
-        val a = System.nanoTime(); step(1); val b = System.nanoTime(); screen.render(); val c = System.nanoTime(); Palette.convert(screen.pixels, ids, 896)
+        val a = System.nanoTime(); step(1); val b = System.nanoTime(); screen.render(); val c = System.nanoTime(); Palette.convertChanged(screen.pixels, prev, ids, PW, dirty); dirty.fill(false)
         tu += b - a; tr += c - b; tc += System.nanoTime() - c
     }
     println("frame cost: update %.2f ms, render %.2f ms, palette %.2f ms".format(tu / 300 / 1e6, tr / 300 / 1e6, tc / 300 / 1e6))
+    // the public copy of the screen pack (the plugin's fallback download)
+    File("pack").mkdirs(); File("pack/tapx-screen-pack.zip").writeBytes(ScreenPack.buildZip())
     println("Wrote previews to ${out.absolutePath}")
 }

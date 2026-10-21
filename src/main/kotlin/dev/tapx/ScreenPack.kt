@@ -24,8 +24,8 @@ import javax.imageio.ImageIO
  * so no extra port or web host is needed. `resource-pack-url` in the config overrides this (for
  * proxies, or to host it elsewhere: the file is saved as plugins/TapX/tapx-screen-pack.zip).
  */
-class ScreenPack(private val plugin: TapXPlugin) {
-    val zip: ByteArray = build()
+class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
+    val zip: ByteArray = buildZip()
     private val sha1: ByteArray = MessageDigest.getInstance("SHA-1").digest(zip)
     private val hash = sha1.joinToString("") { "%02x".format(it) }
     private val listenerKey = Key.key("tapx", "pack")
@@ -49,10 +49,39 @@ class ScreenPack(private val plugin: TapXPlugin) {
         return "http://${if (':' in name) "[$name]" else name}:$port/tapx/$hash.zip"
     }
 
+    private val triedFallback = java.util.concurrent.ConcurrentHashMap.newKeySet<java.util.UUID>()
+
     fun send(p: Player) {
         if (!plugin.config.getBoolean("hide-crosshair", true)) return
-        val url = url(p) ?: return
+        triedFallback.remove(p.uniqueId)
+        val url = url(p) ?: return sendFallback(p)
         p.addResourcePack(PACK_ID, url, sha1, "TapX hides the crosshair while you play.", false)
+    }
+
+    /** Second try from a public copy (GitHub by default), for hosts where the game port can't serve it. */
+    private fun sendFallback(p: Player) {
+        val url = plugin.config.getString("resource-pack-fallback-url", DEFAULT_FALLBACK)?.takeIf { it.isNotBlank() } ?: return
+        if (!triedFallback.add(p.uniqueId)) return
+        p.addResourcePack(PACK_ID, url, null, "TapX hides the crosshair while you play.", false)
+    }
+
+    @org.bukkit.event.EventHandler
+    fun onStatus(e: org.bukkit.event.player.PlayerResourcePackStatusEvent) {
+        if (e.id != PACK_ID || !plugin.arcade.isPlaying(e.player)) return
+        val p = e.player
+        when (e.status) {
+            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD,
+            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.INVALID_URL,
+            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_RELOAD -> {
+                if (p.uniqueId !in triedFallback) {
+                    plugin.logger.info("${p.name} couldn't download the screen pack from this server (${e.status}); trying the backup link.")
+                    plugin.server.scheduler.runTaskLater(plugin, Runnable { if (p.isOnline) sendFallback(p) }, 10L)
+                } else plugin.logger.warning("${p.name} couldn't load the screen pack (${e.status}). Set resource-pack-url in the TapX config.")
+            }
+            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.DECLINED ->
+                p.sendMessage(mm("<gray>Tip: accept the <white>TapX resource pack</white> to hide the crosshair (Multiplayer → Edit server → Server Resource Packs: <green>Enabled</green>)."))
+            else -> {}
+        }
     }
 
     fun remove(p: Player) {
@@ -80,7 +109,11 @@ class ScreenPack(private val plugin: TapXPlugin) {
         }
     }
 
-    private fun build(): ByteArray {
+    companion object Builder {
+        /** The pack's bytes (deterministic: same plugin version, same bytes and hash). */
+        fun buildZip(): ByteArray = build()
+
+        private fun build(): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { z ->
             fun put(name: String, bytes: ByteArray) {
@@ -107,7 +140,7 @@ class ScreenPack(private val plugin: TapXPlugin) {
         return out.toByteArray()
     }
 
-    companion object {
         private val PACK_ID: UUID = UUID.fromString("7a9b3c1e-2f4d-4e6a-9b8c-0d1e2f3a4b5c")
+        const val DEFAULT_FALLBACK = "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-screen-pack.zip"
     }
 }

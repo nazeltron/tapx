@@ -184,7 +184,7 @@ object Art {
         val swing = if (attacking) 0 else Math.round(sin(t * 5 + l.phase + 1)).toInt()
         val pose = Pose(l.copy(phase = 0.0, aura = null), Math.round(s * 100).toInt(), bob, cape, swing, atkQ)
         val img = chibiSprite(pose)
-        g.drawImage(img, Math.round(x - CHIBI_X * s).toInt(), Math.round(y - CHIBI_Y * s).toInt(), null)
+        g.blit(img, Math.round(x - CHIBI_X * s).toInt(), Math.round(y - CHIBI_Y * s).toInt())
         l.aura?.let { // floating sparkles, live
             val c = hex(it)
             for (i in 0 until 6) {
@@ -205,10 +205,7 @@ object Art {
     private fun chibiSprite(p: Pose): BufferedImage {
         synchronized(chibiCache) { chibiCache[p]?.let { return it } }
         val s = p.scale / 100.0
-        val img = BufferedImage(max(1, Math.ceil(134 * s).toInt()), max(1, Math.ceil(142 * s).toInt()), BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
-        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+        val (img, g) = hiRes(Math.ceil(134 * s).toInt(), Math.ceil(142 * s).toInt())
         g.scale(s, s); g.translate(CHIBI_X, CHIBI_Y)
         val atk = if (p.atk == 0) 0.0 else (p.atk - 0.5) / 6.0
         drawChibiNow(g, p.look, p.bob.toDouble(), p.cape * 2.8, p.swing * 1.5, atk)
@@ -559,7 +556,7 @@ object Art {
     fun drawPet(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, t: Double, attack: Boolean = false) {
         val flapQ = Math.round(sin(t * 14) * 2).toInt(); val wagQ = Math.round(sin(t * 6)).toInt()
         val img = cached("pet", "${p.id}:$flapQ:$wagQ:$attack", 96 * s) { drawPetNow(it, p, 48 * s, 48 * s, s, flapQ * 0.25, wagQ * 0.4, attack) }
-        g.drawImage(img, Math.round(x - 48 * s - 4).toInt(), Math.round(y - 48 * s - 4).toInt(), null)
+        g.blit(img, Math.round(x - 48 * s - 4).toInt(), Math.round(y - 48 * s - 4).toInt())
     }
 
     private fun drawPetNow(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, flap: Double, wag: Double, attack: Boolean) = g.save {
@@ -608,10 +605,7 @@ object Art {
     // ==================================================================== backgrounds
     /** Static scenery for a world, drawn once into an image of the battle area. */
     fun background(world: World, w: Int, h: Int, gy: Double): BufferedImage {
-        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-        val g = img.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
-        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+        val (img, g) = hiRes(w, h, opaque = true)
         val r = Random(world.name.length * 1013L + 7)
         g.paint = GradientPaint(0f, 0f, hex(world.sky.first), 0f, gy.toFloat(), hex(world.sky.second))
         g.fillRect(0, 0, w, h)
@@ -804,7 +798,7 @@ object Art {
     fun coin(g: Graphics2D, x: Double, y: Double, r: Double, spin: Double = 1.0) {
         val sq = Math.round(max(0.15, abs(spin)) * 8) / 8.0 // 8 spin steps are plenty at this size
         val img = cached("coin", sq.toString(), r * 2) { coinNow(it, r, r, r, sq) }
-        g.drawImage(img, Math.round(x - r - 4).toInt(), Math.round(y - r - 4).toInt(), null)
+        g.blit(img, Math.round(x - r - 4).toInt(), Math.round(y - r - 4).toInt())
     }
 
     private fun coinNow(g: Graphics2D, x: Double, y: Double, r: Double, spin: Double) = g.save {
@@ -819,7 +813,7 @@ object Art {
     }
 
     fun gem(g: Graphics2D, x: Double, y: Double, r: Double) =
-        g.drawImage(cached("gem", "", r * 2) { gemNow(it, r, r, r) }, Math.round(x - r - 4).toInt(), Math.round(y - r - 4).toInt(), null)
+        g.blit(cached("gem", "", r * 2) { gemNow(it, r, r, r) }, Math.round(x - r - 4).toInt(), Math.round(y - r - 4).toInt())
 
     private fun gemNow(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
         translate(x, y)
@@ -831,7 +825,7 @@ object Art {
     }
 
     fun relic(g: Graphics2D, x: Double, y: Double, r: Double) =
-        g.drawImage(cached("relic", "", r * 2.6) { relicNow(it, r * 1.3, r * 1.3, r) }, Math.round(x - r * 1.3 - 4).toInt(), Math.round(y - r * 1.3 - 4).toInt(), null)
+        g.blit(cached("relic", "", r * 2.6) { relicNow(it, r * 1.3, r * 1.3, r) }, Math.round(x - r * 1.3 - 4).toInt(), Math.round(y - r * 1.3 - 4).toInt())
 
     private fun relicNow(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
         translate(x, y)
@@ -842,8 +836,8 @@ object Art {
     }
 
     fun chest(g: Graphics2D, c: Chest?, x: Double, y: Double, s: Double, body: Color = hex(c?.body ?: "8a5a2a"), band: Color = hex(c?.band ?: "c0c0c8")) =
-        g.drawImage(cached("chest", "${body.rgb}:${band.rgb}", 62 * s) { chestNow(it, 31 * s, 38 * s, s, body, band) },
-            Math.round(x - 31 * s - 4).toInt(), Math.round(y - 38 * s - 4).toInt(), null)
+        g.blit(cached("chest", "${body.rgb}:${band.rgb}", 62 * s) { chestNow(it, 31 * s, 38 * s, s, body, band) },
+            Math.round(x - 31 * s - 4).toInt(), Math.round(y - 38 * s - 4).toInt())
 
     private fun chestNow(g: Graphics2D, x: Double, y: Double, s: Double, body: Color, band: Color) = g.save {
         translate(x, y); scale(s, s)
@@ -856,7 +850,7 @@ object Art {
     }
 
     fun egg(g: Graphics2D, x: Double, y: Double, r: Double) =
-        g.drawImage(cached("egg", "", r * 2.6) { eggNow(it, r * 1.3, r * 1.3, r) }, Math.round(x - r * 1.3 - 4).toInt(), Math.round(y - r * 1.3 - 4).toInt(), null)
+        g.blit(cached("egg", "", r * 2.6) { eggNow(it, r * 1.3, r * 1.3, r) }, Math.round(x - r * 1.3 - 4).toInt(), Math.round(y - r * 1.3 - 4).toInt())
 
     private fun eggNow(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
         translate(x, y)
@@ -896,7 +890,7 @@ object Art {
     /** A square icon with a coloured tile background, drawn at (x, y) with size [s]. */
     fun icon(g: Graphics2D, key: String, x: Double, y: Double, s: Double) {
         val img = cached("icon", key, s) { iconNow(it, key, 0.0, 0.0, s) }
-        g.drawImage(img, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+        g.blit(img, Math.round(x - 4).toInt(), Math.round(y - 4).toInt())
     }
 
     // Static pictures (icons, coins) are drawn once into small images and reused every frame.
@@ -909,16 +903,14 @@ object Art {
         val k = "$kind:$key:${Math.round(size * 10)}"
         synchronized(spriteCache) { spriteCache[k]?.let { return it } }
         val n = Math.ceil(size).toInt() + 8
-        val img = BufferedImage(n, n, BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
-        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+        val (img, g) = hiRes(n, n)
         g.translate(4, 4)
         draw(g)
         g.dispose()
         synchronized(spriteCache) { spriteCache[k] = img }
         return img
     }
+
 
     private fun iconNow(g: Graphics2D, key: String, x: Double, y: Double, s: Double) = g.save {
         translate(x, y)
@@ -1050,7 +1042,7 @@ object Art {
     }
 
     fun gearIcon(g: Graphics2D, gear: Gear, x: Double, y: Double, s: Double, owned: Boolean) =
-        g.drawImage(cached("gear", "${gear.id}:$owned", s) { gearIconNow(it, gear, 0.0, 0.0, s, owned) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+        g.blit(cached("gear", "${gear.id}:$owned", s) { gearIconNow(it, gear, 0.0, 0.0, s, owned) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt())
 
     private fun gearIconNow(g: Graphics2D, gear: Gear, x: Double, y: Double, s: Double, owned: Boolean) = g.save {
         translate(x, y)
@@ -1079,7 +1071,7 @@ object Art {
     }
 
     fun heroPortrait(g: Graphics2D, look: Look, x: Double, y: Double, s: Double, bg: Color) =
-        g.drawImage(cached("hero", "$look:${bg.rgb}", s) { heroPortraitNow(it, look, 0.0, 0.0, s, bg) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+        g.blit(cached("hero", "$look:${bg.rgb}", s) { heroPortraitNow(it, look, 0.0, 0.0, s, bg) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt())
 
     private fun heroPortraitNow(g: Graphics2D, look: Look, x: Double, y: Double, s: Double, bg: Color) = g.save {
         paint = GradientPaint(x.toFloat(), y.toFloat(), bg.shade(0.25), x.toFloat(), (y + s).toFloat(), bg.shade(-0.25))
@@ -1090,7 +1082,7 @@ object Art {
     }
 
     fun petPortrait(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, owned: Boolean) =
-        g.drawImage(cached("petp", "${p.id}:$owned", s) { petPortraitNow(it, p, 0.0, 0.0, s, owned) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+        g.blit(cached("petp", "${p.id}:$owned", s) { petPortraitNow(it, p, 0.0, 0.0, s, owned) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt())
 
     private fun petPortraitNow(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, owned: Boolean) = g.save {
         paint = GradientPaint(x.toFloat(), y.toFloat(), hex("4aa3d0"), x.toFloat(), (y + s).toFloat(), hex("2a5f8a"))

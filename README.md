@@ -88,6 +88,56 @@ join). Every change is logged to `plugins/TapX/gems.log`.
 | `/tapx admin stage <player> <stage>` | `tapx.admin` | op |
 | `/tapx admin reset <player>` | `tapx.admin` | op |
 
+## Server features (3.1)
+
+**Events ("ADMIN ABUSE")** - server-wide boosts with a rainbow boss bar, titles and a banner on the game screen.
+| Command | What it does |
+| --- | --- |
+| `/event start <gold\|damage\|relics\|mana\|luck\|all> <minutes> [multiplier]` | Start a boost (default x2) |
+| `/event stop <type\|all>` | End it early |
+| `/event gems <amount>` | Every online player gets gems |
+| `/event giveaway <gems> [winners]` | Random online winners after a 3-2-1 countdown |
+| `/events` | Anyone: what's running |
+
+**Store (everything costs gems)** - ranks VIP 500, PRO 1200, MVP 3000, ELITE 6000, TITAN 15000, LEGEND 35000
+(more gold and damage, auto taps, longer offline earnings, bigger daily rewards, chat/tab tags; upgrades
+cost only the difference; LuckPerms groups of the same names are given if LuckPerms is installed), gamepasses
+(Global x2, Relic Hunter, Ally Fury, Crit Master, Boss Slayer, Pet Trainer, Arcane Flow, Lucky Charm, Auto Boss,
+plus the earlier ones) and a 25%-off bundle of every pass you don't own.
+
+**For your web store (console commands)**
+| Command | What it does |
+| --- | --- |
+| `tapx gems give {username} <amount>` | Gems (online, offline or before their first join) |
+| `tapx rank set {username} <rank>` / `tapx pass add {username} <pass>` | Give a rank / gamepass |
+| `tapx payment {username} <usd> [package]` | Thank-you broadcast, "type GG" gold, fills the piggy bank |
+| `tapx flashsale <percent> <minutes>` | Real in-game discount on the gem shop + announcement |
+| `tapx promo create <code> <uses\|0> <hours\|0> gems:5 eggs:3 relics:10 gold:100 boost:surge:10` | Promo codes (`/promo <code>`) |
+
+When the piggy bank fills (default $100 of purchases) everyone gets a 2x EVERYTHING event.
+
+**Admin**
+| Command | What it does |
+| --- | --- |
+| `/tapx reset <player>` | Wipe one player's progress; gems, gamepasses, ranks and skins are kept |
+| `/tapx resetall confirm` | New season: the same for every player (online and offline) |
+| `/tapx set <player> <stat> <value>` | Any stat: gold, gems, relics, stage, taplevel, prestiges, rank, ally.<id>, artifact.<id>, pet.<id>, pass.<id>, ... |
+| `/tapx stats <player>` | Show a player's numbers |
+
+**Essentials** (permission `tapx.cmd.<name>`, ops by default; EssentialsX's own commands win if it's installed):
+`/gmc /gms /gma /gmsp /gm`, `/fly`, `/heal`, `/feed`, `/god`, `/speed`, `/tp /tphere /tpall /back`, `/spawn /setspawn`,
+`/warp /setwarp /delwarp /warps`, `/home /sethome /delhome /homes`, `/broadcast`, `/clearchat`, `/mutechat`, `/mute /unmute`,
+`/kick /ban /tempban /unban`, `/vanish`, `/invsee`, `/ec`, `/ci`, `/hat`, `/repair`, `/workbench`, `/day /night /sun /rain`,
+`/seen`, `/sudo`, `/nick`. For everyone: `/msg /r`, `/ping`, `/list`, `/afk`, `/rules`, `/store`, `/discord`, `/link`, `/promo`.
+
+**Tab list and chat** - styled header/footer (stage, gems, ping, TPS, running event, flash sale), names with rank or
+staff tags (`tapx.tag.owner/admin/mod/helper`), stage and AFK, sorted by rank; chat with tags and a stats card on hover.
+
+**Discord** - `/discord`, `/link`, `/unlink` through DiscordSRV (link codes like DrillSim). Linked players get x1.25
+gold forever and 5 pet eggs once.
+
+**In the game** - a 6-step tutorial for new players and a daily wheel (Quest tab).
+
 ## Config (`plugins/TapX/config.yml`)
 
 ```yaml
@@ -99,7 +149,8 @@ auto-start: true          # put players into the game when they join
 arcade-world: tapx_arcade # the void world used for screens
 screen-fov: 70            # field of view the screen is sized for (players can fine-tune in-game)
 screen-aspect: 1.778      # window shape the screen is sized for (16:9)
-screen-fps: 20            # screen updates per second, 2-40 (more = smoother, more CPU/bandwidth)
+screen-fps: 20            # screen updates per second, 2-40 (idle players drop to 10 then 5)
+screen-resolution: 2      # 2 = sharp 1792x1024 (14x8 maps), 1 = 896x512 (a quarter of the cost)
 render-threads: 2         # background threads that draw screens
 hide-crosshair: true      # send the crosshair-hiding pack to players on the game screen
 resource-pack-url: ""     # host the pack yourself (needed behind a proxy); empty = served on the game port

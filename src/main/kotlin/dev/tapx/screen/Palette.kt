@@ -66,6 +66,34 @@ object Palette {
     /** The single closest map colour. */
     fun toMap(rgb: Int): Byte = near[key(rgb)]
 
+    /**
+     * Like [convert], but only for pixels that differ from [prev] (which is updated). Marks the
+     * changed 128x16 map bands in [dirty] (index: (tileRow * 8 + band) * tileCols + tileCol).
+     * Only the first [scanWidth] pixels of each row are looked at (the rest is known unchanged).
+     */
+    fun convertChanged(src: IntArray, prev: IntArray, dst: ByteArray, width: Int, dirty: BooleanArray, scanWidth: Int = width): Int {
+        var changed = 0
+        val h = src.size / width
+        val tileCols = width / 128
+        for (y in 0 until h) {
+            val row = (y and 3) shl 2
+            val bandBase = ((y shr 7) * 8 + ((y and 127) shr 4)) * tileCols
+            var i = y * width
+            for (x in 0 until scanWidth) {
+                val c = src[i]
+                if (c != prev[i]) {
+                    prev[i] = c
+                    val k = key(c)
+                    dst[i] = if (mix[k] > BAYER[row or (x and 3)]) other[k] else near[k]
+                    dirty[bandBase + (x shr 7)] = true
+                    changed++
+                }
+                i++
+            }
+        }
+        return changed
+    }
+
     /** Convert a whole frame (packed RGB ints, [width] wide) into map colour ids, dithered. */
     fun convert(src: IntArray, dst: ByteArray, width: Int) {
         var i = 0

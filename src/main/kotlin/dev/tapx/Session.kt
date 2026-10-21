@@ -24,9 +24,11 @@ import java.util.logging.Level
 class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : GameEvents, ScreenHost {
     override val game = Game(data, this)
     val d get() = game.d
-    val screen = GameScreen(this, SCREEN_COLS * 128, SCREEN_ROWS * 128)
-    private val mapColors = ByteArray(screen.width * screen.height)
-    private val frameColors = ByteArray(screen.width * screen.height) // last full frame, without the cursor
+    val screen = GameScreen(this, LAYOUT_W, LAYOUT_H)
+    private val mapColors = ByteArray(screen.pw * screen.ph)
+    private val frameColors = ByteArray(screen.pw * screen.ph) // last full frame, without the cursor
+    private val lastPixels = IntArray(screen.pw * screen.ph) { -1 } // what frameColors was made from
+    private val dirty = BooleanArray(screen.pw / 128 * (screen.ph / 128) * 8) // map bands to upload
 
     @Volatile var active = false
         private set
@@ -115,6 +117,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         if (away > 30) screen.welcome(away, game.applyOffline(away, plugin.config.getDouble("max-offline-hours", 12.0)))
         d.lastSeen = System.currentTimeMillis()
         screenMap.spawn()
+        lastPixels.fill(-1) // a new wall of maps: everything gets sent
         if (d.screenZoom <= 0) screen.calibrate()
         active = true
         task = plugin.gameThreads.scheduleAtFixedRate(::loop, 0, TICK_MS, TimeUnit.MILLISECONDS)
@@ -145,7 +148,10 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         try {
             while (true) inbox.poll()?.invoke() ?: break
             if (!active) return
-            val every = (1000 / TICK_MS / plugin.config.getInt("screen-fps", 20).coerceIn(2, 1000 / TICK_MS.toInt())).toInt()
+            // idle players (no input for a while) get fewer frames; any input brings full speed back
+            val fps = plugin.config.getInt("screen-fps", 20).coerceIn(2, 1000 / TICK_MS.toInt())
+            val idleFps = when { screen.idle > 180 -> 5; screen.idle > 30 -> 10; else -> fps }
+            val every = (1000 / TICK_MS / minOf(fps, idleFps)).toInt()
             val full = ticks++ % every == 0L
             if (full) {
                 val dt = every * TICK_MS / 1000.0
@@ -154,17 +160,21 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
                 d.lastSeen = System.currentTimeMillis()
                 if (frames++ % 10 == 0L) game.checkAchievements()
                 screen.render()
-                Palette.convert(screen.pixels, frameColors, screen.width)
+                Palette.convertChanged(screen.pixels, lastPixels, frameColors, screen.pw, dirty,
+                    if (screen.panelRedrawn) screen.pw else screen.panelLeft)
             }
             val (cx, cy) = screen.stepCursor()
             val m = map ?: return
             if (full) {
+                // only changed pixels were converted; the cursor's old and new spots are re-sent too
                 System.arraycopy(frameColors, 0, mapColors, 0, mapColors.size)
                 screen.overlayCursorAt(mapColors, cx, cy)
-                m.push(mapColors)
+                m.markDirty(dirty, drawnX, drawnY, drawnX + CURSOR_W, drawnY + CURSOR_H)
+                m.markDirty(dirty, cx, cy, cx + CURSOR_W, cy + CURSOR_H)
+                m.pushDirty(mapColors, dirty)
             } else if (cx != drawnX || cy != drawnY) {
-                val w = screen.width
-                for (y in maxOf(0, drawnY) until minOf(screen.height, drawnY + CURSOR_H)) {
+                val w = screen.pw
+                for (y in maxOf(0, drawnY) until minOf(screen.ph, drawnY + CURSOR_H)) {
                     val x0 = maxOf(0, drawnX); val x1 = minOf(w, drawnX + CURSOR_W)
                     if (x1 > x0) System.arraycopy(frameColors, y * w + x0, mapColors, y * w + x0, x1 - x0)
                 }
@@ -244,11 +254,15 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     override fun onSkill(id: String, damage: Double) = screen.onSkill(id, damage)
     override fun onPetAttack(damage: Double) = screen.onPetAttack(damage)
     override fun onAllyAttack(id: String, damage: Double) = screen.onAllyAttack(id, damage)
+    override fun onRankChanged(rank: String?) { plugin.rankChanged(player, rank) }
     override fun onAchievement(group: AchGroup, target: Double, gems: Int) = screen.onAchievement(group, target, gems)
 
     companion object {
-        const val SCREEN_COLS = 7
-        const val SCREEN_ROWS = 4
+        /** The game is laid out in 896x512 units, drawn on 7x4 maps per unit of resolution (Res.k). */
+        const val LAYOUT_W = 896
+        const val LAYOUT_H = 512
+        val SCREEN_COLS get() = 7 * dev.tapx.screen.Res.k
+        val SCREEN_ROWS get() = 4 * dev.tapx.screen.Res.k
         /** Mouse movement arrives every 50 ms (a client tick); the cursor is drawn twice as often. */
         const val TICK_MS = 25L
     }

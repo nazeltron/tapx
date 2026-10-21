@@ -117,7 +117,8 @@ class ShopItem(
 
 val SHOP_SECTIONS = listOf(
     "offers" to "SPECIAL OFFERS",
-    "perm" to "PERMANENT UPGRADES",
+    "rank" to "RANKS - PERKS FOREVER",
+    "perm" to "GAMEPASSES",
     "boost" to "BOOSTS",
     "instant" to "INSTANT REWARDS",
     "chest" to "CHESTS - FIND EQUIPMENT",
@@ -133,6 +134,15 @@ val SHOP_ITEMS = listOf(
     ShopItem("offline_master", "perm", "Offline Master", "Full offline gold, up to 24 hours", 500, "moon", "perm"),
     ShopItem("mana_well", "perm", "Mana Well", "+25 max mana, forever", 300, "crystal", "perm"),
     ShopItem("sp_pack", "perm", "Skill Book", "+3 skill points", 150, "tome", "level", maxLevel = 20),
+    ShopItem("global2x", "perm", "Global x2", "x2 gold, damage AND relics", 2500, "crown", "perm"),
+    ShopItem("relics2x", "perm", "Relic Hunter", "x2 relics from prestige", 1200, "relic", "perm"),
+    ShopItem("ally2x", "perm", "Ally Fury", "x2 ally damage, forever", 900, "banner", "perm"),
+    ShopItem("crit_master", "perm", "Crit Master", "+5% crit chance, +50% crit damage", 900, "fang", "perm"),
+    ShopItem("boss_slayer", "perm", "Boss Slayer", "+10s boss timer, +25% boss damage", 700, "hourglass", "perm"),
+    ShopItem("pet_trainer", "perm", "Pet Trainer", "x2 pet damage, pets charge faster", 700, "egg", "perm"),
+    ShopItem("arcane_flow", "perm", "Arcane Flow", "x2 mana regen", 600, "crystal", "perm"),
+    ShopItem("lucky", "perm", "Lucky Charm", "x2 mimics and wisps, better free chest", 600, "clover", "perm"),
+    ShopItem("auto_boss", "perm", "Auto Boss", "Fights the boss again by itself", 400, "boots", "perm"),
     ShopItem("surge", "boost", "Power Surge", "x2 ALL damage for 10 min", 40, "surge", "boost", 600.0),
     ShopItem("golden_hour", "boost", "Golden Hour", "x2 gold for 20 min", 60, "clock", "boost", 1200.0),
     ShopItem("phantom", "boost", "Phantom Hand", "Auto-tap 6/sec for 10 min", 50, "phantom", "boost", 600.0),
@@ -333,3 +343,35 @@ val ACH_GROUPS = listOf(
 val NAME_A = listOf("Gor", "Bub", "Zar", "Mok", "Fen", "Skul", "Gri", "Vex", "Plo", "Drak", "Nib", "Hux", "Kra", "Lum", "Ooz", "Ral", "Bor", "Snag", "Wib", "Qua")
 val NAME_B = listOf("ble", "gax", "rin", "zle", "mog", "ix", "ox", "ath", "uk", "ling", "bert", "ra", "nok", "pip", "dor", "goo")
 val TITLES = listOf("the Vile", "the Huge", "the Unkind", "Muck Lord", "the Ancient", "the Glutton", "Bonecrusher", "the Eternal", "the Dreadful")
+
+// ---------------------------------------------------------------- store ranks (gems)
+/**
+ * A rank bought with gems. Higher ranks include everything below; upgrading costs only the
+ * difference. [color] is a MiniMessage colour (or "rainbow").
+ */
+class Rank(
+    val key: String, val name: String, val gems: Int, val color: String, val hex: String,
+    val gold: Double, val damage: Double, val autoTaps: Int, val offlineHours: Int, val dailyBonus: Double,
+)
+
+val RANKS = listOf(
+    Rank("vip", "VIP", 500, "#ffaa33", "ffaa33", 1.15, 1.10, 0, 14, 1.25),
+    Rank("pro", "PRO", 1200, "#55ff55", "55ff55", 1.30, 1.20, 0, 16, 1.5),
+    Rank("mvp", "MVP", 3000, "#55ffff", "55ffff", 1.50, 1.35, 1, 18, 1.75),
+    Rank("elite", "ELITE", 6000, "#ff5555", "ff5555", 1.75, 1.50, 1, 20, 2.0),
+    Rank("titan", "TITAN", 15000, "#ff55ff", "ff55ff", 2.25, 1.75, 2, 24, 2.5),
+    Rank("legend", "LEGEND", 35000, "rainbow", "ffd23a", 3.0, 2.0, 3, 24, 3.0),
+)
+
+fun rankDef(key: String?) = RANKS.firstOrNull { it.key == key }
+fun rankIndex(key: String?) = RANKS.indexOfFirst { it.key == key }
+
+/** "x1.5 gold, x1.35 damage, +1 auto tap, 18h offline" */
+fun rankPerks(r: Rank): String = buildList {
+    add("x${r.gold} gold"); add("x${r.damage} dmg")
+    if (r.autoTaps > 0) add("+${r.autoTaps} auto tap")
+    add("${r.offlineHours}h offline")
+}.joinToString(", ")
+
+// ---------------------------------------------------------------- daily wheel (label, chance)
+val WHEEL = listOf("GOLD" to 0.25, "EGGS" to 0.18, "RELICS" to 0.12, "2X GOLD" to 0.12, "MANA" to 0.12, "BIG GOLD" to 0.10, "CHEST" to 0.08, "GEMS" to 0.03)
