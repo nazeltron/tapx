@@ -145,7 +145,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         try {
             while (true) inbox.poll()?.invoke() ?: break
             if (!active) return
-            val every = (1000 / TICK_MS / plugin.config.getInt("fps", 10).coerceIn(2, 1000 / TICK_MS.toInt())).toInt()
+            val every = (1000 / TICK_MS / plugin.config.getInt("screen-fps", 20).coerceIn(2, 1000 / TICK_MS.toInt())).toInt()
             val full = ticks++ % every == 0L
             if (full) {
                 val dt = every * TICK_MS / 1000.0

@@ -45,6 +45,7 @@ tasks.build { dependsOn(tasks.shadowJar) }
 tasks.register<JavaExec>("preview") {
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("dev.tapx.PreviewKt")
+    (project.findProperty("jvm") as String?)?.let { jvmArgs(it.split(" ")) } // e.g. a profiler flag
 }
 // Balance check, same strategy as web/tools/sim.js: ./gradlew sim -Pargs="hours tapsPerSecond"
 tasks.register<JavaExec>("sim") {

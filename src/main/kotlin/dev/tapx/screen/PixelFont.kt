@@ -214,7 +214,26 @@ object PixelFont {
 
     /** Text with a 1-pixel (times scale) dark outline, like Minecraft's shadowed labels. */
     fun drawOutlined(g: Graphics2D, text: String, x: Int, y: Int, color: Color, scale: Int = 1, outline: Color = Color(20, 18, 28)) {
-        for (dx in -1..1) for (dy in -1..1) if (dx != 0 || dy != 0) draw(g, text, x + dx * scale, y + dy * scale, outline, scale)
-        draw(g, text, x, y, color, scale)
+        if (text.isEmpty()) return
+        g.drawImage(sprite(text, color, scale, outline), x - scale, y - scale, null)
     }
+
+    private data class Key(val text: String, val color: Int, val scale: Int, val outline: Int)
+
+    // Outlined labels are drawn often and change rarely, so each one is drawn once into a small image.
+    private val sprites = ThreadLocal.withInitial {
+        object : java.util.LinkedHashMap<Key, java.awt.image.BufferedImage>(256, 0.75f, true) {
+            override fun removeEldestEntry(e: MutableMap.MutableEntry<Key, java.awt.image.BufferedImage>) = size > 1500
+        }
+    }
+
+    private fun sprite(text: String, color: Color, scale: Int, outline: Color): java.awt.image.BufferedImage =
+        sprites.get().getOrPut(Key(text, color.rgb, scale, outline.rgb)) {
+            val img = java.awt.image.BufferedImage(width(text, scale) + 2 * scale, (ROWS + 2) * scale, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            val g = img.createGraphics()
+            for (dx in 0..2) for (dy in 0..2) if (dx != 1 || dy != 1) draw(g, text, dx * scale, dy * scale, outline, scale)
+            draw(g, text, scale, scale, color, scale)
+            g.dispose()
+            img
+        }
 }

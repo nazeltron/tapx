@@ -18,9 +18,9 @@ import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 
 /**
- * A tiny resource pack, only for players on the game screen, that blanks the crosshair and XP bar
- * (the only HUD left once players aren't in spectator mode). It is served over plain HTTP on the
- * Minecraft port itself: a connection that starts with "GET " gets the pack instead of the game,
+ * A tiny resource pack, only for players on the game screen, that blanks the crosshair, XP bar and
+ * locator bar (the only HUD left once players aren't in spectator mode). It is served over plain
+ * HTTP on the Minecraft port itself: a connection that starts with "GET " gets the pack instead of the game,
  * so no extra port or web host is needed. `resource-pack-url` in the config overrides this (for
  * proxies, or to host it elsewhere: the file is saved as plugins/TapX/tapx-screen-pack.zip).
  */
@@ -97,6 +97,12 @@ class ScreenPack(private val plugin: TapXPlugin) {
             put(sprites + "crosshair_attack_indicator_progress.png", blank(16, 4))
             put(sprites + "experience_bar_background.png", blank(182, 5))
             put(sprites + "experience_bar_progress.png", blank(182, 5))
+            // the locator bar (other players' positions) shows in the same spot
+            put(sprites + "locator_bar_background.png", blank(12, 5))
+            put(sprites + "locator_bar_background.png.mcmeta", """{"gui":{"scaling":{"type":"nine_slice","width":12,"height":5,"border":{"left":5,"right":5,"top":1,"bottom":1}}}}""".toByteArray())
+            for (n in listOf("locator_bar_arrow_up", "locator_bar_arrow_down")) put("$sprites$n.png", blank(7, 5))
+            for (n in 0..3) put(sprites + "locator_bar_dot/default_$n.png", blank(9, 9))
+            put(sprites + "locator_bar_dot/bowtie.png", blank(9, 9))
         }
         return out.toByteArray()
     }

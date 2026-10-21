@@ -94,5 +94,28 @@ fun main(args: Array<String>) {
     }
     println("avg changed pixels per idle frame: ${changed / 10}")
     ImageIO.write(diff, "png", File(out, "idle-diff.png"))
+    // every character side by side at double size
+    run {
+        val img = BufferedImage(1200, 520, BufferedImage.TYPE_INT_RGB)
+        val g = img.createGraphics()
+        g.color = java.awt.Color(0x8ab4d8); g.fillRect(0, 0, 1200, 520)
+        val looks = HEROES.map { it.look } + listOf(HERO_LOOK) + SKINS.map { it.apply(HERO_LOOK) }
+        looks.forEachIndexed { i, l -> dev.tapx.screen.Art.drawChibi(g, l, 60.0 + (i % 12) * 95.0, 200.0 + (i / 12) * 240.0, 2.0, 0.3, 0.0) }
+        dev.tapx.screen.Art.drawPet(g, PETS[0], 1100.0, 420.0, 2.0, 0.3)
+        g.dispose()
+        val ids2 = ByteArray(1200 * 520); val px = IntArray(1200 * 520); img.getRGB(0, 0, 1200, 520, px, 0, 1200)
+        Palette.convert(px, ids2)
+        for (i in ids2.indices) img.setRGB(i % 1200, i / 1200, MapColor.getColorFromPackedId(ids2[i].toInt() and 255))
+        ImageIO.write(img, "png", File(out, "characters.png"))
+    }
+    // how long one full frame takes (render + palette), for picking the fps
+    data.stage = 34; game.monster = null; step(10)
+    repeat(300) { step(1); screen.render(); Palette.convert(screen.pixels, ids) }
+    var tr = 0L; var tc = 0L; var tu = 0L
+    repeat(300) {
+        val a = System.nanoTime(); step(1); val b = System.nanoTime(); screen.render(); val c = System.nanoTime(); Palette.convert(screen.pixels, ids)
+        tu += b - a; tr += c - b; tc += System.nanoTime() - c
+    }
+    println("frame cost: update %.2f ms, render %.2f ms, palette %.2f ms".format(tu / 300 / 1e6, tr / 300 / 1e6, tc / 300 / 1e6))
     println("Wrote previews to ${out.absolutePath}")
 }

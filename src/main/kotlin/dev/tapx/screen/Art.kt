@@ -134,7 +134,15 @@ object Art {
                 g.fillStroke(path { moveTo(-2.0, hy - 14); quadTo(-14.0, hy - 26, -20.0, hy - 18); quadTo(-10.0, hy - 18, -6.0, hy - 12) }, hex(l.trim))
             }
         }
-        l.beard?.let { g.fillStroke(path { moveTo(-4.0, hy + 4); quadTo(4.0, hy + 22, 13.0, hy + 4); quadTo(6.0, hy + 8, -4.0, hy + 4) }, hex(it)) }
+        if (l.hairStyle in setOf("spiky", "bob", "long", "bandana")) {
+            val shine = hair.shade(0.35)
+            g.line(-8.0, hy - 6, -3.0, hy - 10, shine, 1.6f)
+            if (l.hairStyle != "bandana") g.line(2.0, hy - 11, 6.0, hy - 10, shine, 1.4f)
+        }
+        l.beard?.let {
+            g.fillStroke(path { moveTo(-4.0, hy + 4); quadTo(4.0, hy + 22, 13.0, hy + 4); quadTo(6.0, hy + 8, -4.0, hy + 4) }, hex(it))
+            g.line(2.0, hy + 9, 4.0, hy + 14, hex(it).shade(0.25), 1.2f)
+        }
     }
 
     fun drawHelmGear(g: Graphics2D, kind: String, color: Color, hy: Double) {
@@ -163,55 +171,137 @@ object Art {
         }
     }
 
-    /** A chibi figure facing right with feet at (x, y). [atk] is attack progress 0..1. */
+    /**
+     * A chibi figure facing right with feet at (x, y). [atk] is attack progress 0..1.
+     * The detailed torso and head are drawn once per look and size into a cached image; the parts
+     * that animate (legs, arms, weapon, cape, aura) are drawn live.
+     */
     fun drawChibi(g: Graphics2D, l: Look, x: Double, y: Double, s: Double, t: Double, atk: Double = 0.0) = g.save {
-        translate(x, y); scale(s, s)
-        val bob = sin(t * 5 + l.phase) * 1.2
+        val bob = Math.round(sin(t * 5 + l.phase) * 1.2).toDouble()
         val lean = if (atk > 0 && atk < 1) sin(atk * PI) * 4 else 0.0
-        fill(ellipse(0.0, 0.0, 17.0, 4.0), Color(0, 0, 0, 60))
-        translate(lean, 0.0)
-        l.cape?.let {
-            val w = sin(t * 6 + l.phase) * 4
-            fillStroke(path { moveTo(-5.0, -33 + bob); quadTo(-22.0, -28 + bob, -34 + w, -18 + w * 0.5); lineTo(-30 + w, -10.0); quadTo(-18.0, -16.0, -2.0, -24 + bob); closePath() }, hex(it))
-        }
-        l.aura?.let {
-            val c = hex(it)
-            for (i in 0 until 6) {
-                val a = t * 1.6 + i / 6.0 * TAU
-                fill(circle(cos(a) * 22, -28 + sin(a) * 8 + sin(t * 4 + i) * 3, 2.4), c)
+        val step = if (atk > 0 && atk < 1) sin(atk * PI) * 3 else 0.0
+        val skin = hex(l.skin); val outfit = hex(l.outfit)
+        save {
+            translate(x, y); scale(s, s)
+            fill(ellipse(0.0, 0.0, 17.0, 4.0), Color(0, 0, 0, 60))
+            translate(lean, 0.0)
+            l.cape?.let {
+                val w = sin(t * 6 + l.phase) * 4
+                val cape = path { moveTo(-5.0, -33 + bob); quadTo(-22.0, -28 + bob, -34 + w, -18 + w * 0.5); lineTo(-30 + w, -10.0); quadTo(-18.0, -16.0, -2.0, -24 + bob); closePath() }
+                fill(cape, hex(it))
+                save { clip(cape); fill(path { moveTo(-4.0, -28 + bob); quadTo(-16.0, -22.0, -31 + w, -12.0); lineTo(-30 + w, -8.0); quadTo(-16.0, -14.0, -2.0, -22 + bob); closePath() }, hex(it).shade(-0.3)) }
+                stroke = stroke(2.2f); color = OUT; draw(cape)
+            }
+            // back arm (behind the body)
+            val swing = sin(t * 5 + l.phase + 1) * 1.5
+            line(-6.0, -31 + bob, -9.0 - swing, -21 + bob, OUT, 6.5f); line(-6.0, -31 + bob, -9.0 - swing, -21 + bob, outfit.shade(-0.3), 4.2f)
+            fillStroke(circle(-9.5 - swing, -19.5 + bob, 2.8), skin.shade(-0.12), 1.8f)
+            // legs: pants with a shaded knee, boots with soles and a shine
+            val pants = hex(l.pants); val boots = hex(l.boots)
+            for ((lx, front) in listOf(-8 - step to false, 2 + step to true)) {
+                fillStroke(rrect(lx, -14.0, 6.0, 12.0, 2.0), if (front) pants else pants.shade(-0.15))
+                fill(java.awt.geom.Rectangle2D.Double(lx + 3.5, -13.0, 1.5, 9.0), pants.shade(-0.3))
+                val bx = lx - 1
+                fillStroke(rrect(bx, -4.0, if (front) 10.0 else 9.0, 5.0, 2.0), boots)
+                fill(java.awt.geom.Rectangle2D.Double(bx + 1, 0.0, if (front) 8.0 else 7.0, 1.2), boots.shade(-0.45))
+                fill(java.awt.geom.Rectangle2D.Double(bx + 2, -3.0, 2.0, 1.2), boots.shade(0.35))
             }
         }
-        val step = if (atk > 0 && atk < 1) sin(atk * PI) * 3 else 0.0
-        val pants = hex(l.pants); val boots = hex(l.boots)
-        fillStroke(rrect(-8 - step, -14.0, 6.0, 12.0, 2.0), pants)
-        fillStroke(rrect(2 + step, -14.0, 6.0, 12.0, 2.0), pants)
-        fillStroke(rrect(-9 - step, -4.0, 9.0, 5.0, 2.0), boots)
-        fillStroke(rrect(1 + step, -4.0, 10.0, 5.0, 2.0), boots)
-        fillStroke(rrect(-10.0, -35 + bob, 20.0, 23.0, 6.0), hex(l.outfit))
-        fill(java.awt.geom.Rectangle2D.Double(-9.0, -18 + bob, 18.0, 3.0), hex(l.trim))
-        fill(java.awt.geom.Rectangle2D.Double(-8.0, -33 + bob, 4.0, 13.0), WHITE.alpha(0.18))
-        val hy = -47 + bob
-        val skin = hex(l.skin)
-        if (l.hairStyle == "hood") {
-            fillStroke(circle(-1.0, hy, 15.0), hex(l.hood ?: "2e3550"))
-            fillStroke(ellipse(3.0, hy + 2, 9.0, 9.5), skin)
-        } else {
-            drawHair(this, l, hy, true)
-            fillStroke(circle(0.0, hy, 12.5), skin)
-        }
-        if (l.hairStyle != "helmet" && l.helmGear != "visor" && l.helmGear != "horned") {
-            fill(ellipse(3.0, hy + 1, 1.6, 2.6), OUT)
-            fill(ellipse(9.0, hy + 1, 1.5, 2.5), OUT)
-            fill(circle(8.0, hy + 6, 2.5), Color(255, 120, 120, 90))
-        }
-        if (l.hairStyle != "hood") drawHair(this, l, hy, false)
-        l.helmGear?.let { drawHelmGear(this, it, hex(l.helmColor ?: "999999"), hy) }
+        // torso + head from the cache
+        val sp = upperSprite(l, s)
+        drawImage(sp, Math.round(x + (lean - UPPER_X) * s).toInt(), Math.round(y + (bob - UPPER_Y) * s).toInt(), null)
         save {
+            translate(x, y); scale(s, s); translate(lean, 0.0)
+            l.aura?.let {
+                val c = hex(it)
+                for (i in 0 until 6) {
+                    val a = t * 1.6 + i / 6.0 * TAU
+                    fill(circle(cos(a) * 22, -28 + sin(a) * 8 + sin(t * 4 + i) * 3, 2.4), c)
+                    fill(circle(cos(a) * 22, -28 + sin(a) * 8 + sin(t * 4 + i) * 3, 1.0), WHITE)
+                }
+            }
+            // front arm and weapon
+            line(4.0, -32 + bob, 7.0, -25 + bob, OUT, 6.5f); line(4.0, -32 + bob, 7.0, -25 + bob, outfit.shade(0.05), 4.2f)
             translate(7.0, -25 + bob)
             rotate(weaponAngle(l.weapon, atk))
             drawWeapon(this, l.weapon, l.blade?.let(::hex) ?: hex("e6edf5"), l.bladeGlow?.let(::hex), l.glow?.let(::hex))
             fillStroke(circle(0.0, 0.0, 3.4), skin, 2f)
+            fill(circle(-1.0, -1.0, 1.0), skin.shade(0.3))
         }
+    }
+
+    private const val UPPER_X = 40.0
+    private const val UPPER_Y = 92.0
+    private val upperCache = object : java.util.LinkedHashMap<Pair<Look, Int>, BufferedImage>(64, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<Pair<Look, Int>, BufferedImage>) = size > 400
+    }
+
+    private fun upperSprite(l: Look, s: Double): BufferedImage {
+        val key = l.copy(phase = 0.0) to Math.round(s * 100).toInt()
+        synchronized(upperCache) { upperCache[key]?.let { return it } }
+        val img = BufferedImage(max(1, Math.ceil(UPPER_X * 2 * s).toInt()), max(1, Math.ceil((UPPER_Y + 4) * s).toInt()), BufferedImage.TYPE_INT_ARGB)
+        val g = img.createGraphics()
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+        g.scale(s, s); g.translate(UPPER_X, UPPER_Y)
+        drawUpper(g, l)
+        g.dispose()
+        synchronized(upperCache) { upperCache[key] = img }
+        return img
+    }
+
+    /** Torso and head, feet at (0, 0): shading, collar, belt, face with eyes, brows and ears. */
+    private fun drawUpper(g: Graphics2D, l: Look) = with(g) {
+        val outfit = hex(l.outfit); val trim = hex(l.trim); val skin = hex(l.skin)
+        val torso = rrect(-10.0, -35.0, 20.0, 23.0, 6.0)
+        fill(torso, outfit)
+        save {
+            clip(torso)
+            fill(java.awt.geom.Rectangle2D.Double(4.0, -35.0, 8.0, 25.0), outfit.shade(-0.2))
+            fill(java.awt.geom.Rectangle2D.Double(-8.0, -32.0, 3.0, 12.0), WHITE.alpha(0.22))
+            fill(java.awt.geom.Rectangle2D.Double(-10.0, -14.5, 20.0, 3.0), trim.shade(-0.15)) // hem
+            fill(path { moveTo(-5.0, -36.0); lineTo(0.0, -29.0); lineTo(5.0, -36.0); closePath() }, skin.shade(-0.08)) // neckline
+            line(-5.0, -35.0, 0.0, -29.0, trim, 1.6f); line(0.0, -29.0, 5.0, -35.0, trim, 1.6f)
+            fill(path { moveTo(1.0, -26.0); lineTo(3.0, -24.0); lineTo(1.0, -22.0); lineTo(-1.0, -24.0); closePath() }, trim) // emblem
+        }
+        stroke = stroke(2.2f); color = OUT; draw(torso)
+        // belt and buckle
+        fill(java.awt.geom.Rectangle2D.Double(-9.0, -19.5, 18.0, 3.5), hex("3a2a20"))
+        fill(rrect(-2.5, -20.5, 5.0, 5.5, 1.0), trim.shade(-0.2))
+        fill(java.awt.geom.Rectangle2D.Double(-1.5, -19.5, 3.0, 3.5), trim)
+        fill(java.awt.geom.Rectangle2D.Double(-1.5, -19.5, 1.0, 1.0), trim.shade(0.5))
+        val hy = -47.0
+        if (l.hairStyle == "hood") {
+            val hood = hex(l.hood ?: "2e3550")
+            fillStroke(circle(-1.0, hy, 15.0), hood)
+            save { clip(circle(-1.0, hy, 15.0)); fill(circle(-6.0, hy - 5, 9.0), hood.shade(0.15)) }
+            fillStroke(ellipse(3.0, hy + 2, 9.0, 9.5), skin)
+            save { clip(ellipse(3.0, hy + 2, 9.0, 9.5)); fill(ellipse(3.0, hy - 6, 10.0, 4.0), hood.shade(-0.4).alpha(0.5)) }
+        } else {
+            drawHair(this, l, hy, true)
+            // ear, head with a soft shade on the back of the head
+            fillStroke(ellipse(-4.0, hy + 2, 3.0, 3.8), skin, 1.8f)
+            fill(ellipse(-4.0, hy + 2, 1.3, 2.0), skin.shade(-0.2))
+            val head = circle(0.0, hy, 12.5)
+            fill(head, skin)
+            save { clip(head); fill(circle(-8.0, hy + 4, 9.0), skin.shade(-0.1)); fill(ellipse(3.0, hy + 11, 10.0, 3.0), skin.shade(-0.12)) }
+            stroke = stroke(2.2f); color = OUT; draw(head)
+            fill(ellipse(-4.0, hy + 2, 2.2, 3.0), skin) // ear sits over the outline
+            fill(ellipse(-4.0, hy + 2, 1.0, 1.7), skin.shade(-0.22))
+        }
+        if (l.hairStyle != "helmet" && l.helmGear != "visor" && l.helmGear != "horned") {
+            for (ex in listOf(3.2, 9.0)) {
+                fill(ellipse(ex, hy + 1, 2.0, 2.9), WHITE)
+                fill(ellipse(ex + 0.5, hy + 1.3, 1.4, 2.3), hex("2a2340"))
+                fill(java.awt.geom.Rectangle2D.Double(ex - 0.2, hy - 0.6, 1.0, 1.0), WHITE)
+            }
+            val brow = hex(l.hair).shade(-0.35)
+            line(1.5, hy - 3.5, 4.5, hy - 4.2, brow, 1.3f); line(7.5, hy - 4.2, 10.5, hy - 3.6, brow, 1.3f)
+            fill(circle(8.5, hy + 6, 2.4), Color(255, 120, 120, 80))
+            line(5.0, hy + 7.2, 7.5, hy + 7.6, hex("8a3a3a"), 1.2f)
+        }
+        if (l.hairStyle != "hood") drawHair(this, l, hy, false)
+        l.helmGear?.let { drawHelmGear(this, it, hex(l.helmColor ?: "999999"), hy) }
     }
 
     // ==================================================================== monsters
@@ -277,11 +367,14 @@ object Art {
 
     private fun faceY(sp: MonsterSpec) = sp.h * when (sp.shape) { "blob" -> 0.6; "tower" -> 0.72; "cone" -> 0.42; "orb" -> 0.52; "brute" -> 0.68; else -> 0.55 }
 
-    private fun drawEye(g: Graphics2D, x: Double, y: Double, r: Double, blink: Boolean, angry: Boolean) {
+    private fun drawEye(g: Graphics2D, x: Double, y: Double, r: Double, blink: Boolean, angry: Boolean, iris: Color = hex("6a4a2a")) {
         if (blink) { g.line(x - r, y, x + r, y, OUT, 2.5f); return }
         g.fillStroke(circle(x, y, r), WHITE, 2.5f)
-        g.fill(circle(x - r * 0.3, y + r * 0.05, r * 0.52), OUT)
-        g.fill(circle(x - r * 0.45, y - r * 0.2, r * 0.17), WHITE)
+        g.save { clip(circle(x, y, r)); fill(ellipse(x, y + r * 0.9, r, r * 0.45), hex("d8dce8")) } // lower lid shade
+        g.fill(circle(x - r * 0.3, y + r * 0.05, r * 0.6), iris)
+        g.fill(circle(x - r * 0.3, y + r * 0.05, r * 0.36), OUT)
+        g.fill(circle(x - r * 0.48, y - r * 0.22, r * 0.18), WHITE)
+        g.fill(circle(x - r * 0.08, y + r * 0.3, r * 0.08), WHITE)
         if (angry) g.line(x - r * 1.1, y - r * 1.25, x + r * 1.1, y - r * 0.75, OUT, 3.5f)
     }
 
@@ -321,6 +414,7 @@ object Art {
                 val ox = cos(a) * 18; val oy = sin(a) * 18
                 val px = -sin(a) * 8; val py = cos(a) * 8
                 fillStroke(path { moveTo(cx - px, cy - py); lineTo(cx + ox, cy + oy); lineTo(cx + px, cy + py); closePath() }, sp.accent, 4f)
+                fill(path { moveTo(cx, cy); lineTo(cx + ox * 0.8, cy + oy * 0.8); lineTo(cx + px * 0.8, cy + py * 0.8); closePath() }, sp.accent.shade(-0.25))
             }
             sp.horns?.let { horns ->
                 val hx = if (sp.shape == "cone") w * 0.13 else w * 0.26
@@ -340,6 +434,7 @@ object Art {
                     }
                     closePath()
                 }, c, 3.5f)
+                for (d in listOf(-1.0, 1.0)) for (k in 1..2) line(d * (hx - 6), hy - k * 9.0, d * (hx + 6), hy - k * 9.0 - 3, c.shade(-0.3), 2f)
             }
             if (sp.arms) {
                 val sway = sin(t * 3 + 1) * 6
@@ -352,33 +447,53 @@ object Art {
                     for (c in -1..1) fillStroke(path { moveTo(cx + c * 5, cy); lineTo(cx + c * 7, cy + 11); lineTo(cx + c * 5 + 3, cy + 1); closePath() }, hex("efe6d2"), 3f)
                 }
             }
+            if (!sp.legs && !sp.float && sp.shape != "slime") for (d in listOf(-1.0, 1.0)) {
+                val fx = d * w * 0.26
+                fillStroke(ellipse(fx, -2.0, w * 0.12, 7.0), sp.dark, 3.5f)
+                for (c in -1..1) fill(path { moveTo(fx + c * 6 + d * 2 - 2, 2.0); lineTo(fx + c * 6 + d * 2, 7.0); lineTo(fx + c * 6 + d * 2 + 2, 2.0); closePath() }, hex("efe6d2"))
+            }
             val body = bodyPath(sp)
             fill(body, sp.color)
             save {
                 clip(body)
+                // rim light: the body shifted down-right covers all but a thin lit edge at the top-left
+                fill(java.awt.geom.Rectangle2D.Double(-w, -h * 1.3, w * 2, h * 1.5), sp.light.shade(0.2))
+                save { translate(4.0, 5.0); fill(body, sp.color) }
                 fill(ellipse(w * 0.42, -h * 0.35, w * 0.4, h * 0.75), sp.dark)
                 fill(ellipse(-w * 0.22, -h * 0.78, w * 0.16, h * 0.09), sp.light)
                 if (sp.belly2) fill(ellipse(0.0, -h * 0.12, w * 0.32, h * 0.32), sp.belly)
-                if (sp.spots) {
-                    val r2 = Random(sp.spotSeed)
-                    repeat(6) { fill(circle((r2.nextDouble() - 0.5) * w * 0.8, -r2.nextDouble() * h * 0.9, 4 + r2.nextDouble() * 7), sp.dark) }
+                // soft shadow at the base, and texture: spots, or scale/fur marks
+                fill(ellipse(0.0, 0.0, w * 0.62, h * 0.14), sp.dark.shade(-0.15))
+                val r2 = Random(sp.spotSeed)
+                if (sp.spots) repeat(7) {
+                    val sx = (r2.nextDouble() - 0.5) * w * 0.8; val sy = -r2.nextDouble() * h * 0.85; val sr = 4 + r2.nextDouble() * 7
+                    fill(circle(sx, sy, sr), sp.dark); fill(circle(sx - sr * 0.3, sy - sr * 0.3, sr * 0.35), sp.color)
+                } else repeat(14) {
+                    val mx = (r2.nextDouble() - 0.5) * w * 0.85; val my = -h * (0.1 + r2.nextDouble() * 0.8)
+                    stroke = stroke(2f); color = sp.dark.alpha(0.7)
+                    draw(path { moveTo(mx - 4, my); quadTo(mx, my + 4, mx + 4, my) })
                 }
+
                 if (hitT > 0) fill(java.awt.geom.Rectangle2D.Double(-w, -h * 1.2, w * 2, h * 1.4), WHITE.alpha(hitT * 0.55))
             }
             stroke = stroke(4f); color = OUT; draw(body)
             val blink = (t + sp.hue * 0.01) % 3.7 < 0.12
             val er = sp.eyeR
             when (sp.eyes) {
-                1 -> drawEye(this, 0.0, fy, er * 1.5, blink, sp.boss)
-                2 -> { drawEye(this, -er * 1.25, fy, er, blink, sp.boss); drawEye(this, er * 1.25, fy, er, blink, sp.boss) }
-                else -> { drawEye(this, -er * 1.9, fy + 2, er * 0.85, blink, sp.boss); drawEye(this, 0.0, fy - er * 0.6, er, blink, sp.boss); drawEye(this, er * 1.9, fy + 2, er * 0.85, blink, sp.boss) }
+                1 -> drawEye(this, 0.0, fy, er * 1.5, blink, sp.boss, sp.accent)
+                2 -> { drawEye(this, -er * 1.25, fy, er, blink, sp.boss, sp.accent); drawEye(this, er * 1.25, fy, er, blink, sp.boss, sp.accent) }
+                else -> { drawEye(this, -er * 1.9, fy + 2, er * 0.85, blink, sp.boss, sp.accent); drawEye(this, 0.0, fy - er * 0.6, er, blink, sp.boss, sp.accent); drawEye(this, er * 1.9, fy + 2, er * 0.85, blink, sp.boss, sp.accent) }
             }
             val my = fy + er * 2 + 4
             val open = 1 + hitT * 0.8
             val mouthC = hex("4a1020")
+            for (d in listOf(-1.0, 1.0)) fill(ellipse(d * (er * 2.6 + 8), my - 2, 7.0, 4.0), Color(255, 110, 140, 70)) // cheeks
             when (sp.mouth) {
                 "grin" -> {
-                    fillStroke(path { moveTo(-20.0, my); quadTo(0.0, my + 22 * open, 20.0, my); closePath() }, mouthC, 3.5f)
+                    val grin = path { moveTo(-20.0, my); quadTo(0.0, my + 22 * open, 20.0, my); closePath() }
+                    fill(grin, mouthC)
+                    save { clip(grin); fill(ellipse(4.0, my + 11 * open, 9.0, 5.0), hex("e0506a")) } // tongue
+                    stroke = stroke(3.5f); color = OUT; draw(grin)
                     fill(java.awt.geom.Rectangle2D.Double(-9.0, my + 1, 7.0, 6.0), WHITE); fill(java.awt.geom.Rectangle2D.Double(2.0, my + 1, 7.0, 6.0), WHITE)
                 }
                 "fangs" -> {
@@ -387,7 +502,9 @@ object Art {
                 }
                 "o" -> fillStroke(ellipse(0.0, my + 4, 7.0, 8 * open), mouthC, 3.5f)
                 "teeth" -> {
-                    fillStroke(rrect(-22.0, my - 2, 44.0, 14 * open, 5.0), mouthC, 3.5f)
+                    fill(rrect(-22.0, my - 2, 44.0, 14 * open, 5.0), mouthC)
+                    fill(ellipse(0.0, my + 12 * open - 2, 12.0, 4.0), hex("e0506a"))
+                    stroke = stroke(3.5f); color = OUT; draw(rrect(-22.0, my - 2, 44.0, 14 * open, 5.0))
                     for (i in 0 until 5) fill(path { moveTo(-20 + i * 8.5, my - 1); lineTo(-16 + i * 8.5, my + 6); lineTo(-12 + i * 8.5, my - 1); closePath() }, WHITE)
                 }
                 else -> { stroke = stroke(3.5f); color = OUT; draw(arc(0.0, my - 4, 12.0, 0.2, PI - 0.2)) }
@@ -395,7 +512,10 @@ object Art {
             if (sp.boss) {
                 val top = if (sp.shape == "orb") -h else -h - (if (sp.shape == "cone") -4 else 2)
                 fillStroke(path { moveTo(-20.0, top + 4); lineTo(-24.0, top - 22); lineTo(-10.0, top - 10); lineTo(0.0, top - 28); lineTo(10.0, top - 10); lineTo(24.0, top - 22); lineTo(20.0, top + 4); closePath() }, hex("ffcf3a"), 3f)
+                fill(path { moveTo(-16.0, top + 1); lineTo(-19.0, top - 15); lineTo(-13.0, top - 9); closePath() }, hex("fff2a8"))
                 fillStroke(circle(0.0, top - 6, 4.0), hex("e63950"), 3f)
+                fill(circle(-1.2, top - 7.2, 1.2), WHITE)
+                fillStroke(circle(-14.0, top - 3, 2.5), hex("3ad1ff"), 2f); fillStroke(circle(14.0, top - 3, 2.5), hex("3ad1ff"), 2f)
             }
         }
     }
@@ -410,6 +530,8 @@ object Art {
         translate(0.0, -abs(sin(t * 6)) * 6)
         fillStroke(rrect(-70.0, -70.0, 140.0, 70.0, 8.0), hex("a8662f"), 4f)
         for (i in 0..1) fill(java.awt.geom.Rectangle2D.Double(-68.0, -42.0 + i * 18, 136.0, 3.0), hex("7a4520"))
+        for (i in 0 until 5) line(-50.0 + i * 24, -60.0 + (i % 2) * 8, -40.0 + i * 24, -60.0 + (i % 2) * 8, hex("8a5326"), 2f)
+        for (nx in listOf(-67.0, 67.0)) for (ny in listOf(-62.0, -10.0)) fill(circle(nx, ny, 2.0), hex("5a3a10"))
         fillStroke(rrect(-74.0, -72.0, 14.0, 72.0, 4.0), hex("e8b83a"), 4f)
         fillStroke(rrect(60.0, -72.0, 14.0, 72.0, 4.0), hex("e8b83a"), 4f)
         fill(rrect(-64.0, -86.0, 128.0, 20.0, 6.0), hex("3a0a14"))
@@ -430,6 +552,13 @@ object Art {
         translate(x, y); scale(s, s)
         val flap = sin(t * 14) * 0.5
         val wing = hex(p.wing); val body = hex(p.body)
+        val wag = sin(t * 6) * 0.4
+        save { // tail
+            translate(-12.0, 10.0); rotate(wag)
+            fillStroke(path { moveTo(0.0, 0.0); quadTo(-16.0, 4.0, -18.0, -10.0); quadTo(-10.0, -4.0, 2.0, -6.0); closePath() }, body, 2.5f)
+            fill(circle(-17.0, -9.0, 3.0), hex(p.belly))
+        }
+        for (d in listOf(-1.0, 1.0)) fillStroke(ellipse(d * 7, 18.0, 4.0, 3.0), body.shade(-0.2), 2f) // feet
         for (d in listOf(-1.0, 1.0)) save {
             scale(d, 1.0); rotate(flap * 0.6)
             fillStroke(path { moveTo(10.0, -4.0); quadTo(30.0, -26.0, 40.0, -10.0); quadTo(30.0, -8.0, 32.0, 2.0); quadTo(22.0, 0.0, 10.0, 6.0); closePath() }, wing, 2.5f)
@@ -443,12 +572,19 @@ object Art {
             for (i in 0..20) { val a = i / 20.0 * TAU; val r = if (i % 2 == 1) 17.0 else 20.0; if (i == 0) moveTo(cos(a) * r, sin(a) * r) else lineTo(cos(a) * r, sin(a) * r) }
             closePath()
         }, body, 2.5f) else fillStroke(ellipse(0.0, 0.0, 18.0, 19.0), body, 2.5f)
+        save { // shading and a shine
+            clip(ellipse(0.0, 0.0, 17.0, 18.0))
+            fill(circle(9.0, 9.0, 16.0).let { java.awt.geom.Area(ellipse(0.0, 0.0, 17.0, 18.0)).apply { subtract(java.awt.geom.Area(circle(-3.0, -3.0, 18.0))) } }, body.shade(-0.18))
+            fill(ellipse(-8.0, -10.0, 4.0, 2.5), body.shade(0.4))
+        }
         fill(ellipse(0.0, 8.0, 10.0, 8.0), hex(p.belly))
+        for (d in listOf(-1.0, 1.0)) fill(ellipse(d * 11, 3.0, 3.0, 2.0), Color(255, 110, 140, 90))
         if (p.sleepy) { line(-9.0, -3.0, -3.0, -3.0, OUT, 2f); line(3.0, -3.0, 9.0, -3.0, OUT, 2f) }
         else {
             val er = if (attack) 3.6 else 2.6
             fill(circle(-6.0, -3.0, er), OUT); fill(circle(6.0, -3.0, er), OUT)
-            fill(circle(-6.8, -4.0, 0.9), WHITE); fill(circle(5.2, -4.0, 0.9), WHITE)
+            fill(circle(-6.8, -4.0, 0.9 * er / 2.6), WHITE); fill(circle(5.2, -4.0, 0.9 * er / 2.6), WHITE)
+            fill(circle(-5.2, -1.8, 0.5), WHITE); fill(circle(6.8, -1.8, 0.5), WHITE)
         }
         fillStroke(path { moveTo(-3.0, 3.0); lineTo(-1.5, 6.0); lineTo(0.0, 3.0); lineTo(1.5, 6.0); lineTo(3.0, 3.0); closePath() }, WHITE, 1.5f)
         if (p.bow) {
@@ -593,6 +729,34 @@ object Art {
         while (x < w) { g.fill(java.awt.geom.Rectangle2D.Double(x + r.nextDouble() * 6, gy + 20 + r.nextDouble() * max(1.0, h - gy - 26), 10 + r.nextDouble() * 8, 4.0), hex(world.dirt).shade(0.15)); x += 22 }
         x = 0.0
         while (x < w) { g.fill(java.awt.geom.Rectangle2D.Double(x, gy + 6, 16.0, 3.0), hex(world.ground).shade(-0.15)); x += 28 }
+        // soil layer with stones
+        g.fill(java.awt.geom.Rectangle2D.Double(0.0, gy + 14, w.toDouble(), 4.0), hex(world.dirt).shade(-0.25))
+        repeat(26) {
+            val px = r.nextDouble() * w; val py = gy + 24 + r.nextDouble() * max(1.0, h - gy - 34); val pr = 2.5 + r.nextDouble() * 4
+            g.fill(ellipse(px, py, pr * 1.4, pr), hex(world.dirt).shade(-0.3))
+            g.fill(ellipse(px - pr * 0.3, py - pr * 0.3, pr * 0.7, pr * 0.4), hex(world.dirt).shade(0.25))
+        }
+        // tufts along the edge of the ground (grass, snow, sand or rock depending on the world)
+        val tuft = when (world.kind) {
+            "peaks" -> hex("f4f8ff"); "lava" -> hex("5a2a1a"); "void" -> hex("6ad8f0"); "dunes" -> hex("b8963a")
+            "ocean" -> hex("2a9a6a"); "forest" -> hex("4a8a5a"); "sky" -> hex("7ac85a"); else -> hex("5aa84a")
+        }
+        x = r.nextDouble() * 20
+        while (x < w) {
+            val th = 7 + r.nextDouble() * 7
+            for ((dx, k) in listOf(-3.0 to 0.75, 3.0 to 0.85, 0.0 to 1.0)) {
+                val c = if (dx == 0.0) tuft.shade(0.18) else tuft.shade(-0.12)
+                g.fill(path { moveTo(x + dx - 2, gy + 2); quadTo(x + dx - 1, gy - th * k * 0.5, x + dx + dx * 0.6, gy - th * k); lineTo(x + dx + 2, gy + 2); closePath() }, c)
+            }
+            if (world.kind == "lava") g.fill(circle(x, gy - th, 1.5), hex("ff8a2a"))
+            x += 16 + r.nextDouble() * 30
+        }
+        // a few flowers / shells / crystals by the ground
+        repeat(10) {
+            val fx = r.nextDouble() * w; val c = when (world.kind) { "lava" -> hex("ff7a2a"); "void" -> hex("c8a8ff"); "ocean" -> hex("ff9ab0"); "peaks" -> hex("a8d8ff"); else -> listOf(hex("ff6a8a"), hex("ffe34a"), hex("ffffff"), hex("8ac8ff"))[r.nextInt(4)] }
+            g.line(fx, gy, fx, gy - 7, hex("4a7a3a"), 1.5f)
+            g.fill(circle(fx, gy - 8, 2.5), c); g.fill(circle(fx, gy - 8, 1.0), hex("fff2a0"))
+        }
         g.dispose()
         return img
     }
@@ -623,8 +787,14 @@ object Art {
     }
 
     // ==================================================================== small items
-    fun coin(g: Graphics2D, x: Double, y: Double, r: Double, spin: Double = 1.0) = g.save {
-        translate(x, y); scale(max(0.15, abs(spin)), 1.0)
+    fun coin(g: Graphics2D, x: Double, y: Double, r: Double, spin: Double = 1.0) {
+        val sq = Math.round(max(0.15, abs(spin)) * 8) / 8.0 // 8 spin steps are plenty at this size
+        val img = cached("coin", sq.toString(), r * 2) { coinNow(it, r, r, r, sq) }
+        g.drawImage(img, Math.round(x - r - 4).toInt(), Math.round(y - r - 4).toInt(), null)
+    }
+
+    private fun coinNow(g: Graphics2D, x: Double, y: Double, r: Double, spin: Double) = g.save {
+        translate(x, y); scale(spin, 1.0)
         fillStroke(circle(0.0, 0.0, r), hex("ffcd3a"), max(1.2f, (r * 0.18).toFloat()), hex("a86a0a"))
         fill(circle(0.0, 0.0, r * 0.65), hex("f2a81e"))
         fill(path { moveTo(-r * 0.4, r * 0.25); lineTo(-r * 0.45, -r * 0.3); lineTo(-r * 0.18, -r * 0.05); lineTo(0.0, -r * 0.38); lineTo(r * 0.18, -r * 0.05); lineTo(r * 0.45, -r * 0.3); lineTo(r * 0.4, r * 0.25); closePath() }, hex("ffe58a"))
@@ -691,7 +861,33 @@ object Art {
     )
 
     /** A square icon with a coloured tile background, drawn at (x, y) with size [s]. */
-    fun icon(g: Graphics2D, key: String, x: Double, y: Double, s: Double) = g.save {
+    fun icon(g: Graphics2D, key: String, x: Double, y: Double, s: Double) {
+        val img = cached("icon", key, s) { iconNow(it, key, 0.0, 0.0, s) }
+        g.drawImage(img, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+    }
+
+    // Static pictures (icons, coins) are drawn once into small images and reused every frame.
+    private val spriteCache = object : java.util.LinkedHashMap<String, BufferedImage>(128, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, BufferedImage>) = size > 600
+    }
+
+    /** A sprite with a 4px margin: [draw] paints with (0, 0) at the sprite's (4, 4). */
+    private fun cached(kind: String, key: String, size: Double, draw: (Graphics2D) -> Unit): BufferedImage {
+        val k = "$kind:$key:${Math.round(size * 10)}"
+        synchronized(spriteCache) { spriteCache[k]?.let { return it } }
+        val n = Math.ceil(size).toInt() + 8
+        val img = BufferedImage(n, n, BufferedImage.TYPE_INT_ARGB)
+        val g = img.createGraphics()
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+        g.translate(4, 4)
+        draw(g)
+        g.dispose()
+        synchronized(spriteCache) { spriteCache[k] = img }
+        return img
+    }
+
+    private fun iconNow(g: Graphics2D, key: String, x: Double, y: Double, s: Double) = g.save {
         translate(x, y)
         val bg = ICON_BG[key] ?: ("3a3f55" to "7a809a")
         paint = GradientPaint(0f, 0f, hex(bg.second), s.toFloat(), s.toFloat(), hex(bg.first))

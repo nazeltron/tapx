@@ -77,6 +77,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
     private val leaving = HashSet<UUID>()
     private val allowCamera = HashSet<UUID>()
     private val reachKey = NamespacedKey(plugin, "screen_reach")
+    private val waypointKey = NamespacedKey(plugin, "screen_waypoints")
 
     /** Generates nothing: an endless empty sky. A fixed spawn skips the slow spawn-point search. */
     private class VoidGenerator : ChunkGenerator() {
@@ -141,6 +142,11 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
                 a.removeModifier(reachKey)
                 a.addTransientModifier(AttributeModifier(reachKey, 16.0, AttributeModifier.Operation.ADD_NUMBER))
             }
+            // no locator bar: don't receive (or send) player waypoints while on the screen
+            for (attr in listOf(Attribute.WAYPOINT_RECEIVE_RANGE, Attribute.WAYPOINT_TRANSMIT_RANGE)) p.getAttribute(attr)?.let { a ->
+                a.removeModifier(waypointKey)
+                a.addTransientModifier(AttributeModifier(waypointKey, -1.0, AttributeModifier.Operation.MULTIPLY_SCALAR_1))
+            }
             for (o in Bukkit.getOnlinePlayers()) if (o != p && isPlaying(o)) { o.hidePlayer(plugin, p); p.hidePlayer(plugin, o) }
             // Sit on the camera entity: seated players send their head rotation every tick (our mouse),
             // even while their view is locked to the camera.
@@ -197,6 +203,8 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             seat.camera.removePassenger(p)
             seat.camera.remove()
             p.getAttribute(Attribute.ENTITY_INTERACTION_RANGE)?.removeModifier(reachKey)
+            p.getAttribute(Attribute.WAYPOINT_RECEIVE_RANGE)?.removeModifier(waypointKey)
+            p.getAttribute(Attribute.WAYPOINT_TRANSMIT_RANGE)?.removeModifier(waypointKey)
             p.isInvisible = false
             plugin.pack.remove(p)
             p.inventory.heldItemSlot = p.inventory.heldItemSlot // the wheel moved the client's slot; put it back
@@ -222,6 +230,8 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
         try {
             p.gameMode = s.d.returnMode?.let { runCatching { GameMode.valueOf(it) }.getOrNull() } ?: GameMode.SURVIVAL
             p.isInvisible = false
+            for (attr in listOf(Attribute.ENTITY_INTERACTION_RANGE, Attribute.WAYPOINT_RECEIVE_RANGE, Attribute.WAYPOINT_TRANSMIT_RANGE))
+                p.getAttribute(attr)?.let { it.removeModifier(reachKey); it.removeModifier(waypointKey) }
             if (p.world == world) p.teleport(s.d.returnTo?.let(::stringToLoc) ?: Bukkit.getWorlds()[0].spawnLocation)
         } finally {
             leaving -= p.uniqueId

@@ -515,7 +515,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val sp = currentSpec()
             if (m != null && sp != null) Art.drawMonster(this, sp, monPos().first, GY, ta, m.hitT, m.deathT, m.age, U * 0.95)
             val (hx, hy) = heroPos()
-            Art.drawChibi(this, heroLook(), hx, hy, U * 1.15, ta, heroAtk)
+            Art.drawChibi(this, heroLook(), hx, hy, U * 1.3, ta, heroAtk)
             petDef(d.activePet)?.let { p ->
                 val homeX = hx - 38; val homeY = GY - 118 + sin(ta * 3) * 6
                 var px = homeX; var py = homeY
@@ -757,7 +757,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             var y = LIST_Y - scroll.toInt()
             drawingList = true
             for (r in rows) {
-                r.draw(RX + 6, y, RW - 26) // off-screen rows still register their buttons for navigation
+                if (y + r.h > LIST_Y && y < LIST_Y + LIST_H) r.draw(RX + 6, y, RW - 26) // only rows that show
                 y += r.h
             }
             drawingList = false

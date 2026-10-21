@@ -29,7 +29,7 @@ Maps can only show about 240 colours, so the art is slightly posterised.
 
 **No crosshair**: players sit invisible, in adventure mode, on the camera entity (so the client
 draws no hotbar, hearts or hand, and the mouse wheel reaches the server as hotbar-slot changes).
-While playing they get a tiny resource pack that blanks the crosshair and XP bar; the plugin serves
+While playing they get a tiny resource pack that blanks the crosshair, XP bar and locator bar; the plugin serves
 it on the Minecraft port itself, so there's nothing to set up. Players are asked once to accept it.
 Behind a proxy (Velocity/BungeeCord), upload `plugins/TapX/tapx-screen-pack.zip` somewhere and set
 `resource-pack-url`. Their real inventory and XP are untouched; the client is just shown them empty.
@@ -98,7 +98,7 @@ auto-start: true          # put players into the game when they join
 arcade-world: tapx_arcade # the void world used for screens
 screen-fov: 70            # field of view the screen is sized for (players can fine-tune in-game)
 screen-aspect: 1.778      # window shape the screen is sized for (16:9)
-fps: 10                   # screen updates per second (more = smoother, more bandwidth)
+screen-fps: 20            # screen updates per second, 2-40 (more = smoother, more CPU/bandwidth)
 render-threads: 2         # background threads that draw screens
 hide-crosshair: true      # send the crosshair-hiding pack to players on the game screen
 resource-pack-url: ""     # host the pack yourself (needed behind a proxy); empty = served on the game port

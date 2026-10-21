@@ -27,8 +27,9 @@ arcade-world: tapx_arcade
 screen-fov: 70
 # Window shape the screen is sized for (16:9). The screen covers the whole view.
 screen-aspect: 1.778
-# Screen updates per second (higher = smoother, more bandwidth).
-fps: 10
+# Screen updates per second, 2 to 40 (higher = smoother, more CPU and bandwidth). The cursor
+# always moves 40 times a second. One player at 20 fps uses roughly 15% of one CPU core.
+screen-fps: 20
 # Background threads used to draw screens.
 render-threads: 2
 
