@@ -154,7 +154,7 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
                 d.lastSeen = System.currentTimeMillis()
                 if (frames++ % 10 == 0L) game.checkAchievements()
                 screen.render()
-                Palette.convert(screen.pixels, frameColors)
+                Palette.convert(screen.pixels, frameColors, screen.width)
             }
             val (cx, cy) = screen.stepCursor()
             val m = map ?: return

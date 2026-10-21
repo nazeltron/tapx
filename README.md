@@ -25,7 +25,8 @@ client still sends its head rotation; the plugin turns that into cursor movement
 re-centres the head before it reaches the up/down limit). The screen is sized to cover the whole
 window; on first join a **Screen size** check appears (+/- until the yellow corners touch the
 window edges), and it can be changed later in Settings.
-Maps can only show about 240 colours, so the art is slightly posterised.
+Maps can only show about 240 colours; the plugin mixes pairs of them with a fixed dither pattern,
+so the smooth, anti-aliased art and gradients still come through (and still areas never flicker).
 
 **No crosshair**: players sit invisible, in adventure mode, on the camera entity (so the client
 draws no hotbar, hearts or hand, and the mouse wheel reaches the server as hotbar-slot changes).
@@ -133,6 +134,7 @@ mineflayer bot that plays on a local server and rebuilds the screen from the pac
 | `screen/Art.kt` | Procedural art (characters, monster generator, pets, backgrounds, icons) |
 | `screen/MapScreen.kt` | The per-player wall of fake item frames and partial map updates |
 | `screen/Palette.kt` | RGB → map colour lookup table |
-| `screen/PixelFont.kt` | Built-in 5×7 pixel font (no server fonts needed) |
+| `screen/GameFont.kt` | Game text: Lilita One with outline, shadow and shine (bundled, SIL OFL; see `resources/fonts`) |
+| `screen/Widgets.kt` | Glossy buttons, panels, cards, ribbons and tabs (drawn once, cached) |
 
 `web/` holds the original browser prototype, kept for reference.

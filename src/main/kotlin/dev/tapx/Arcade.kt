@@ -157,7 +157,7 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             plugin.server.scheduler.runTaskLater(plugin, Runnable {
                 if (!isPlaying(p)) return@Runnable
                 lockCamera(p)
-                val border = Palette.toMap(0x14131c)
+                val border = Palette.toMap(0x0b0d1a)
                 s.start(MapScreen(p, screenOrigin(slot), Direction.NORTH, cols, rows, MAP_ID_BASE, pad = 2, borderColor = border))
             }, 10L)
             plugin.server.scheduler.runTaskLater(plugin, Runnable { if (isPlaying(p)) lockCamera(p, resend = true) }, 40L)

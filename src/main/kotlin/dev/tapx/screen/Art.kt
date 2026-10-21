@@ -173,98 +173,103 @@ object Art {
 
     /**
      * A chibi figure facing right with feet at (x, y). [atk] is attack progress 0..1.
-     * The detailed torso and head are drawn once per look and size into a cached image; the parts
-     * that animate (legs, arms, weapon, cape, aura) are drawn live.
+     * Poses are quantised (idle bob, cape, arm swing; 6 attack frames) and each pose is drawn once
+     * into a cached image, so a character costs one image copy per frame.
      */
-    fun drawChibi(g: Graphics2D, l: Look, x: Double, y: Double, s: Double, t: Double, atk: Double = 0.0) = g.save {
-        val bob = Math.round(sin(t * 5 + l.phase) * 1.2).toDouble()
+    fun drawChibi(g: Graphics2D, l: Look, x: Double, y: Double, s: Double, t: Double, atk: Double = 0.0) {
+        val attacking = atk > 0 && atk < 1
+        val atkQ = if (attacking) 1 + (atk * 6).toInt().coerceAtMost(5) else 0
+        val bob = if (attacking) 0 else Math.round(sin(t * 5 + l.phase)).toInt()
+        val cape = if (attacking || l.cape == null) 0 else Math.round(sin(t * 6 + l.phase) * 1.4).toInt()
+        val swing = if (attacking) 0 else Math.round(sin(t * 5 + l.phase + 1)).toInt()
+        val pose = Pose(l.copy(phase = 0.0, aura = null), Math.round(s * 100).toInt(), bob, cape, swing, atkQ)
+        val img = chibiSprite(pose)
+        g.drawImage(img, Math.round(x - CHIBI_X * s).toInt(), Math.round(y - CHIBI_Y * s).toInt(), null)
+        l.aura?.let { // floating sparkles, live
+            val c = hex(it)
+            for (i in 0 until 6) {
+                val a = t * 1.6 + i / 6.0 * TAU
+                val px = x + cos(a) * 22 * s; val py = y + (-28 + sin(a) * 8 + sin(t * 4 + i) * 3) * s
+                g.fill(circle(px, py, 2.6 * s), c.alpha(0.6)); g.fill(circle(px, py, 1.2 * s), WHITE)
+            }
+        }
+    }
+
+    private data class Pose(val look: Look, val scale: Int, val bob: Int, val cape: Int, val swing: Int, val atk: Int)
+    private const val CHIBI_X = 62.0
+    private const val CHIBI_Y = 104.0
+    private val chibiCache = object : java.util.LinkedHashMap<Pose, BufferedImage>(256, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<Pose, BufferedImage>) = size > 900
+    }
+
+    private fun chibiSprite(p: Pose): BufferedImage {
+        synchronized(chibiCache) { chibiCache[p]?.let { return it } }
+        val s = p.scale / 100.0
+        val img = BufferedImage(max(1, Math.ceil(134 * s).toInt()), max(1, Math.ceil(142 * s).toInt()), BufferedImage.TYPE_INT_ARGB)
+        val g = img.createGraphics()
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+        g.scale(s, s); g.translate(CHIBI_X, CHIBI_Y)
+        val atk = if (p.atk == 0) 0.0 else (p.atk - 0.5) / 6.0
+        drawChibiNow(g, p.look, p.bob.toDouble(), p.cape * 2.8, p.swing * 1.5, atk)
+        g.dispose()
+        synchronized(chibiCache) { chibiCache[p] = img }
+        return img
+    }
+
+    /** The full character in local units, feet at (0, 0). */
+    private fun drawChibiNow(g: Graphics2D, l: Look, bob: Double, capeW: Double, swing: Double, atk: Double) = with(g) {
         val lean = if (atk > 0 && atk < 1) sin(atk * PI) * 4 else 0.0
         val step = if (atk > 0 && atk < 1) sin(atk * PI) * 3 else 0.0
         val skin = hex(l.skin); val outfit = hex(l.outfit)
-        save {
-            translate(x, y); scale(s, s)
-            fill(ellipse(0.0, 0.0, 17.0, 4.0), Color(0, 0, 0, 60))
-            translate(lean, 0.0)
-            l.cape?.let {
-                val w = sin(t * 6 + l.phase) * 4
-                val cape = path { moveTo(-5.0, -33 + bob); quadTo(-22.0, -28 + bob, -34 + w, -18 + w * 0.5); lineTo(-30 + w, -10.0); quadTo(-18.0, -16.0, -2.0, -24 + bob); closePath() }
-                fill(cape, hex(it))
-                save { clip(cape); fill(path { moveTo(-4.0, -28 + bob); quadTo(-16.0, -22.0, -31 + w, -12.0); lineTo(-30 + w, -8.0); quadTo(-16.0, -14.0, -2.0, -22 + bob); closePath() }, hex(it).shade(-0.3)) }
-                stroke = stroke(2.2f); color = OUT; draw(cape)
-            }
-            // back arm (behind the body)
-            val swing = sin(t * 5 + l.phase + 1) * 1.5
-            line(-6.0, -31 + bob, -9.0 - swing, -21 + bob, OUT, 6.5f); line(-6.0, -31 + bob, -9.0 - swing, -21 + bob, outfit.shade(-0.3), 4.2f)
-            fillStroke(circle(-9.5 - swing, -19.5 + bob, 2.8), skin.shade(-0.12), 1.8f)
-            // legs: pants with a shaded knee, boots with soles and a shine
-            val pants = hex(l.pants); val boots = hex(l.boots)
-            for ((lx, front) in listOf(-8 - step to false, 2 + step to true)) {
-                fillStroke(rrect(lx, -14.0, 6.0, 12.0, 2.0), if (front) pants else pants.shade(-0.15))
-                fill(java.awt.geom.Rectangle2D.Double(lx + 3.5, -13.0, 1.5, 9.0), pants.shade(-0.3))
-                val bx = lx - 1
-                fillStroke(rrect(bx, -4.0, if (front) 10.0 else 9.0, 5.0, 2.0), boots)
-                fill(java.awt.geom.Rectangle2D.Double(bx + 1, 0.0, if (front) 8.0 else 7.0, 1.2), boots.shade(-0.45))
-                fill(java.awt.geom.Rectangle2D.Double(bx + 2, -3.0, 2.0, 1.2), boots.shade(0.35))
-            }
+        fill(ellipse(0.0, 0.0, 18.0, 4.5), Color(0, 0, 0, 70))
+        translate(lean, 0.0)
+        l.cape?.let {
+            val w = capeW
+            val cape = path { moveTo(-5.0, -33 + bob); quadTo(-22.0, -28 + bob, -34 + w, -18 + w * 0.5); lineTo(-30 + w, -10.0); quadTo(-18.0, -16.0, -2.0, -24 + bob); closePath() }
+            paint = GradientPaint(-2f, -30f, hex(it).shade(0.15), -30f, -12f, hex(it).shade(-0.35)); fill(cape)
+            save { clip(cape); fill(path { moveTo(-4.0, -28 + bob); quadTo(-16.0, -22.0, -31 + w, -12.0); lineTo(-30 + w, -8.0); quadTo(-16.0, -14.0, -2.0, -22 + bob); closePath() }, hex(it).shade(-0.4)) }
+            stroke = stroke(1.8f); color = OUT; draw(cape)
         }
-        // torso + head from the cache
-        val sp = upperSprite(l, s)
-        drawImage(sp, Math.round(x + (lean - UPPER_X) * s).toInt(), Math.round(y + (bob - UPPER_Y) * s).toInt(), null)
-        save {
-            translate(x, y); scale(s, s); translate(lean, 0.0)
-            l.aura?.let {
-                val c = hex(it)
-                for (i in 0 until 6) {
-                    val a = t * 1.6 + i / 6.0 * TAU
-                    fill(circle(cos(a) * 22, -28 + sin(a) * 8 + sin(t * 4 + i) * 3, 2.4), c)
-                    fill(circle(cos(a) * 22, -28 + sin(a) * 8 + sin(t * 4 + i) * 3, 1.0), WHITE)
-                }
-            }
-            // front arm and weapon
-            line(4.0, -32 + bob, 7.0, -25 + bob, OUT, 6.5f); line(4.0, -32 + bob, 7.0, -25 + bob, outfit.shade(0.05), 4.2f)
-            translate(7.0, -25 + bob)
-            rotate(weaponAngle(l.weapon, atk))
-            drawWeapon(this, l.weapon, l.blade?.let(::hex) ?: hex("e6edf5"), l.bladeGlow?.let(::hex), l.glow?.let(::hex))
-            fillStroke(circle(0.0, 0.0, 3.4), skin, 2f)
-            fill(circle(-1.0, -1.0, 1.0), skin.shade(0.3))
+        // back arm (behind the body)
+        line(-6.0, -31 + bob, -9.0 - swing, -21 + bob, OUT, 6.2f); line(-6.0, -31 + bob, -9.0 - swing, -21 + bob, outfit.shade(-0.3), 4.2f)
+        fillStroke(circle(-9.5 - swing, -19.5 + bob, 2.8), skin.shade(-0.12), 1.6f)
+        // legs: shaded pants, boots with soles and a shine
+        val pants = hex(l.pants); val boots = hex(l.boots)
+        for ((lx, front) in listOf(-8 - step to false, 2 + step to true)) {
+            val pc = if (front) pants else pants.shade(-0.15)
+            paint = GradientPaint(lx.toFloat(), -14f, pc.shade(0.15), (lx + 6).toFloat(), -4f, pc.shade(-0.25))
+            fill(rrect(lx, -14.0, 6.0, 12.0, 2.0)); stroke = stroke(1.8f); color = OUT; draw(rrect(lx, -14.0, 6.0, 12.0, 2.0))
+            val bx = lx - 1; val bw = if (front) 10.0 else 9.0
+            paint = GradientPaint(0f, -4f, boots.shade(0.25), 0f, 1f, boots.shade(-0.25))
+            fill(rrect(bx, -4.0, bw, 5.0, 2.0)); stroke = stroke(1.8f); color = OUT; draw(rrect(bx, -4.0, bw, 5.0, 2.0))
+            fill(rrect(bx + 0.8, 0.0, bw - 1.6, 1.2, 0.6), boots.shade(-0.5))
+            fill(ellipse(bx + 3, -2.6, 1.6, 0.8), boots.shade(0.5))
         }
-    }
-
-    private const val UPPER_X = 40.0
-    private const val UPPER_Y = 92.0
-    private val upperCache = object : java.util.LinkedHashMap<Pair<Look, Int>, BufferedImage>(64, 0.75f, true) {
-        override fun removeEldestEntry(e: MutableMap.MutableEntry<Pair<Look, Int>, BufferedImage>) = size > 400
-    }
-
-    private fun upperSprite(l: Look, s: Double): BufferedImage {
-        val key = l.copy(phase = 0.0) to Math.round(s * 100).toInt()
-        synchronized(upperCache) { upperCache[key]?.let { return it } }
-        val img = BufferedImage(max(1, Math.ceil(UPPER_X * 2 * s).toInt()), max(1, Math.ceil((UPPER_Y + 4) * s).toInt()), BufferedImage.TYPE_INT_ARGB)
-        val g = img.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
-        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
-        g.scale(s, s); g.translate(UPPER_X, UPPER_Y)
-        drawUpper(g, l)
-        g.dispose()
-        synchronized(upperCache) { upperCache[key] = img }
-        return img
+        save { translate(0.0, bob); drawUpper(this, l) }
+        // front arm and weapon
+        line(4.0, -32 + bob, 7.0, -25 + bob, OUT, 6.2f); line(4.0, -32 + bob, 7.0, -25 + bob, outfit.shade(0.05), 4.2f)
+        translate(7.0, -25 + bob)
+        rotate(weaponAngle(l.weapon, atk))
+        drawWeapon(this, l.weapon, l.blade?.let(::hex) ?: hex("e6edf5"), l.bladeGlow?.let(::hex), l.glow?.let(::hex))
+        fillStroke(circle(0.0, 0.0, 3.4), skin, 1.8f)
+        fill(circle(-1.0, -1.0, 1.1), skin.shade(0.35))
     }
 
     /** Torso and head, feet at (0, 0): shading, collar, belt, face with eyes, brows and ears. */
     private fun drawUpper(g: Graphics2D, l: Look) = with(g) {
         val outfit = hex(l.outfit); val trim = hex(l.trim); val skin = hex(l.skin)
         val torso = rrect(-10.0, -35.0, 20.0, 23.0, 6.0)
-        fill(torso, outfit)
+        paint = GradientPaint(-10f, -35f, outfit.shade(0.28), 10f, -12f, outfit.shade(-0.28)); fill(torso)
         save {
             clip(torso)
-            fill(java.awt.geom.Rectangle2D.Double(4.0, -35.0, 8.0, 25.0), outfit.shade(-0.2))
-            fill(java.awt.geom.Rectangle2D.Double(-8.0, -32.0, 3.0, 12.0), WHITE.alpha(0.22))
+            fill(ellipse(-5.0, -30.0, 3.0, 6.0), WHITE.alpha(0.18))
             fill(java.awt.geom.Rectangle2D.Double(-10.0, -14.5, 20.0, 3.0), trim.shade(-0.15)) // hem
             fill(path { moveTo(-5.0, -36.0); lineTo(0.0, -29.0); lineTo(5.0, -36.0); closePath() }, skin.shade(-0.08)) // neckline
             line(-5.0, -35.0, 0.0, -29.0, trim, 1.6f); line(0.0, -29.0, 5.0, -35.0, trim, 1.6f)
             fill(path { moveTo(1.0, -26.0); lineTo(3.0, -24.0); lineTo(1.0, -22.0); lineTo(-1.0, -24.0); closePath() }, trim) // emblem
         }
-        stroke = stroke(2.2f); color = OUT; draw(torso)
+        stroke = stroke(1.8f); color = OUT; draw(torso)
         // belt and buckle
         fill(java.awt.geom.Rectangle2D.Double(-9.0, -19.5, 18.0, 3.5), hex("3a2a20"))
         fill(rrect(-2.5, -20.5, 5.0, 5.5, 1.0), trim.shade(-0.2))
@@ -283,9 +288,10 @@ object Art {
             fillStroke(ellipse(-4.0, hy + 2, 3.0, 3.8), skin, 1.8f)
             fill(ellipse(-4.0, hy + 2, 1.3, 2.0), skin.shade(-0.2))
             val head = circle(0.0, hy, 12.5)
-            fill(head, skin)
-            save { clip(head); fill(circle(-8.0, hy + 4, 9.0), skin.shade(-0.1)); fill(ellipse(3.0, hy + 11, 10.0, 3.0), skin.shade(-0.12)) }
-            stroke = stroke(2.2f); color = OUT; draw(head)
+            paint = RadialGradientPaint(3f, (hy - 4).toFloat(), 17f, floatArrayOf(0f, 0.7f, 1f), arrayOf(skin.shade(0.18), skin, skin.shade(-0.18)))
+            fill(head)
+            save { clip(head); fill(ellipse(3.0, hy + 11, 10.0, 3.0), skin.shade(-0.14)) }
+            stroke = stroke(1.8f); color = OUT; draw(head)
             fill(ellipse(-4.0, hy + 2, 2.2, 3.0), skin) // ear sits over the outline
             fill(ellipse(-4.0, hy + 2, 1.0, 1.7), skin.shade(-0.22))
         }
@@ -456,11 +462,13 @@ object Art {
             fill(body, sp.color)
             save {
                 clip(body)
-                // rim light: the body shifted down-right covers all but a thin lit edge at the top-left
-                fill(java.awt.geom.Rectangle2D.Double(-w, -h * 1.3, w * 2, h * 1.5), sp.light.shade(0.2))
-                save { translate(4.0, 5.0); fill(body, sp.color) }
-                fill(ellipse(w * 0.42, -h * 0.35, w * 0.4, h * 0.75), sp.dark)
-                fill(ellipse(-w * 0.22, -h * 0.78, w * 0.16, h * 0.09), sp.light)
+                // smooth shading lit from the top-left, a glossy highlight, a darker rim at the bottom-right
+                val rad = max(w, h).toFloat() * 1.05f
+                paint = RadialGradientPaint((-w * 0.22).toFloat(), (-h * 0.72).toFloat(), rad, floatArrayOf(0f, 0.5f, 0.85f, 1f),
+                    arrayOf(sp.light.shade(0.2), sp.color, sp.dark, sp.dark.shade(-0.25)))
+                fill(java.awt.geom.Rectangle2D.Double(-w, -h * 1.3, w * 2, h * 1.5))
+                save { rotate(-0.5, -w * 0.22, -h * 0.8); fill(ellipse(-w * 0.22, -h * 0.8, w * 0.17, h * 0.08), Color(255, 255, 255, 120)) }
+                fill(ellipse(-w * 0.3, -h * 0.66, w * 0.04, h * 0.03), Color(255, 255, 255, 150))
                 if (sp.belly2) fill(ellipse(0.0, -h * 0.12, w * 0.32, h * 0.32), sp.belly)
                 // soft shadow at the base, and texture: spots, or scale/fur marks
                 fill(ellipse(0.0, 0.0, w * 0.62, h * 0.14), sp.dark.shade(-0.15))
@@ -476,7 +484,7 @@ object Art {
 
                 if (hitT > 0) fill(java.awt.geom.Rectangle2D.Double(-w, -h * 1.2, w * 2, h * 1.4), WHITE.alpha(hitT * 0.55))
             }
-            stroke = stroke(4f); color = OUT; draw(body)
+            stroke = stroke(3.5f); color = sp.dark.shade(-0.65); draw(body)
             val blink = (t + sp.hue * 0.01) % 3.7 < 0.12
             val er = sp.eyeR
             when (sp.eyes) {
@@ -548,11 +556,15 @@ object Art {
     }
 
     // ==================================================================== pets
-    fun drawPet(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, t: Double, attack: Boolean = false) = g.save {
+    fun drawPet(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, t: Double, attack: Boolean = false) {
+        val flapQ = Math.round(sin(t * 14) * 2).toInt(); val wagQ = Math.round(sin(t * 6)).toInt()
+        val img = cached("pet", "${p.id}:$flapQ:$wagQ:$attack", 96 * s) { drawPetNow(it, p, 48 * s, 48 * s, s, flapQ * 0.25, wagQ * 0.4, attack) }
+        g.drawImage(img, Math.round(x - 48 * s - 4).toInt(), Math.round(y - 48 * s - 4).toInt(), null)
+    }
+
+    private fun drawPetNow(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, flap: Double, wag: Double, attack: Boolean) = g.save {
         translate(x, y); scale(s, s)
-        val flap = sin(t * 14) * 0.5
         val wing = hex(p.wing); val body = hex(p.body)
-        val wag = sin(t * 6) * 0.4
         save { // tail
             translate(-12.0, 10.0); rotate(wag)
             fillStroke(path { moveTo(0.0, 0.0); quadTo(-16.0, 4.0, -18.0, -10.0); quadTo(-10.0, -4.0, 2.0, -6.0); closePath() }, body, 2.5f)
@@ -598,6 +610,8 @@ object Art {
     fun background(world: World, w: Int, h: Int, gy: Double): BufferedImage {
         val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
         val g = img.createGraphics()
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
         val r = Random(world.name.length * 1013L + 7)
         g.paint = GradientPaint(0f, 0f, hex(world.sky.first), 0f, gy.toFloat(), hex(world.sky.second))
         g.fillRect(0, 0, w, h)
@@ -795,19 +809,31 @@ object Art {
 
     private fun coinNow(g: Graphics2D, x: Double, y: Double, r: Double, spin: Double) = g.save {
         translate(x, y); scale(spin, 1.0)
-        fillStroke(circle(0.0, 0.0, r), hex("ffcd3a"), max(1.2f, (r * 0.18).toFloat()), hex("a86a0a"))
-        fill(circle(0.0, 0.0, r * 0.65), hex("f2a81e"))
-        fill(path { moveTo(-r * 0.4, r * 0.25); lineTo(-r * 0.45, -r * 0.3); lineTo(-r * 0.18, -r * 0.05); lineTo(0.0, -r * 0.38); lineTo(r * 0.18, -r * 0.05); lineTo(r * 0.45, -r * 0.3); lineTo(r * 0.4, r * 0.25); closePath() }, hex("ffe58a"))
+        paint = RadialGradientPaint((-r * 0.35).toFloat(), (-r * 0.4).toFloat(), (r * 1.6).toFloat(), floatArrayOf(0f, 0.6f, 1f), arrayOf(hex("fff4b0"), hex("ffc82a"), hex("d08a10")))
+        fill(circle(0.0, 0.0, r))
+        stroke = stroke(max(1.2f, (r * 0.14).toFloat())); color = hex("8a5a08"); draw(circle(0.0, 0.0, r))
+        paint = GradientPaint(0f, (-r * 0.6).toFloat(), hex("e89a14"), 0f, (r * 0.6).toFloat(), hex("ffd040"))
+        fill(circle(0.0, 0.0, r * 0.66))
+        fill(path { moveTo(-r * 0.4, r * 0.25); lineTo(-r * 0.45, -r * 0.3); lineTo(-r * 0.18, -r * 0.05); lineTo(0.0, -r * 0.38); lineTo(r * 0.18, -r * 0.05); lineTo(r * 0.45, -r * 0.3); lineTo(r * 0.4, r * 0.25); closePath() }, hex("fff2a8"))
+        fill(ellipse(-r * 0.35, -r * 0.55, r * 0.3, r * 0.14), Color(255, 255, 255, 170))
     }
 
-    fun gem(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
+    fun gem(g: Graphics2D, x: Double, y: Double, r: Double) =
+        g.drawImage(cached("gem", "", r * 2) { gemNow(it, r, r, r) }, Math.round(x - r - 4).toInt(), Math.round(y - r - 4).toInt(), null)
+
+    private fun gemNow(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
         translate(x, y)
-        fillStroke(path { moveTo(-r, -r * 0.3); lineTo(-r * 0.5, -r * 0.8); lineTo(r * 0.5, -r * 0.8); lineTo(r, -r * 0.3); lineTo(0.0, r); closePath() }, hex("4ad8ff"), max(1f, (r * 0.12).toFloat()), hex("0a5a8a"))
+        val gemShape = path { moveTo(-r, -r * 0.3); lineTo(-r * 0.5, -r * 0.8); lineTo(r * 0.5, -r * 0.8); lineTo(r, -r * 0.3); lineTo(0.0, r); closePath() }
+        paint = GradientPaint(0f, (-r).toFloat(), hex("b8f4ff"), 0f, r.toFloat(), hex("1a8ad0")); fill(gemShape)
+        stroke = stroke(max(1f, (r * 0.12).toFloat())); color = hex("0a4a7a"); draw(gemShape)
         fill(path { moveTo(-r * 0.5, -r * 0.8); lineTo(-r * 0.15, -r * 0.3); lineTo(-r, -r * 0.3); closePath() }, hex("b5f1ff"))
         fill(path { moveTo(r * 0.15, -r * 0.3); lineTo(r, -r * 0.3); lineTo(0.0, r); closePath() }, hex("1aa6e0"))
     }
 
-    fun relic(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
+    fun relic(g: Graphics2D, x: Double, y: Double, r: Double) =
+        g.drawImage(cached("relic", "", r * 2.6) { relicNow(it, r * 1.3, r * 1.3, r) }, Math.round(x - r * 1.3 - 4).toInt(), Math.round(y - r * 1.3 - 4).toInt(), null)
+
+    private fun relicNow(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
         translate(x, y)
         val lw = max(1f, (r * 0.12).toFloat())
         for (d in listOf(-1.0, 1.0)) save { translate(d * r * 0.7, -r * 0.35); rotate(d * -0.5); fillStroke(ellipse(0.0, 0.0, r * 0.55, r * 0.28), WHITE, lw) }
@@ -815,7 +841,11 @@ object Art {
         fillStroke(circle(0.0, -r * 0.45, r * 0.25), hex("ffd23a"), lw)
     }
 
-    fun chest(g: Graphics2D, c: Chest?, x: Double, y: Double, s: Double, body: Color = hex(c?.body ?: "8a5a2a"), band: Color = hex(c?.band ?: "c0c0c8")) = g.save {
+    fun chest(g: Graphics2D, c: Chest?, x: Double, y: Double, s: Double, body: Color = hex(c?.body ?: "8a5a2a"), band: Color = hex(c?.band ?: "c0c0c8")) =
+        g.drawImage(cached("chest", "${body.rgb}:${band.rgb}", 62 * s) { chestNow(it, 31 * s, 38 * s, s, body, band) },
+            Math.round(x - 31 * s - 4).toInt(), Math.round(y - 38 * s - 4).toInt(), null)
+
+    private fun chestNow(g: Graphics2D, x: Double, y: Double, s: Double, body: Color, band: Color) = g.save {
         translate(x, y); scale(s, s)
         fillStroke(rrect(-26.0, -6.0, 52.0, 26.0, 3.0), body, 2.5f)
         fillStroke(path { moveTo(-26.0, -6.0); lineTo(-26.0, -16.0); quadTo(0.0, -34.0, 26.0, -16.0); lineTo(26.0, -6.0); closePath() }, body.shade(0.12), 2.5f)
@@ -825,7 +855,10 @@ object Art {
         fill(java.awt.geom.Rectangle2D.Double(-1.5, -6.0, 3.0, 5.0), OUT)
     }
 
-    fun egg(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
+    fun egg(g: Graphics2D, x: Double, y: Double, r: Double) =
+        g.drawImage(cached("egg", "", r * 2.6) { eggNow(it, r * 1.3, r * 1.3, r) }, Math.round(x - r * 1.3 - 4).toInt(), Math.round(y - r * 1.3 - 4).toInt(), null)
+
+    private fun eggNow(g: Graphics2D, x: Double, y: Double, r: Double) = g.save {
         translate(x, y)
         fillStroke(path { moveTo(0.0, -r * 1.25); curveTo(r * 0.95, -r * 1.2, r * 1.05, r * 0.9, 0.0, r); curveTo(-r * 1.05, r * 0.9, -r * 0.95, -r * 1.2, 0.0, -r * 1.25) }, hex("fff4e0"), max(1f, (r * 0.13).toFloat()))
         fill(circle(-r * 0.35, -r * 0.2, r * 0.22), hex("6ad0a0")); fill(circle(r * 0.3, r * 0.35, r * 0.18), hex("ff9a6a")); fill(circle(r * 0.25, -r * 0.6, r * 0.14), hex("6aa0ff"))
@@ -878,7 +911,7 @@ object Art {
         val n = Math.ceil(size).toInt() + 8
         val img = BufferedImage(n, n, BufferedImage.TYPE_INT_ARGB)
         val g = img.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
         g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
         g.translate(4, 4)
         draw(g)
@@ -890,11 +923,13 @@ object Art {
     private fun iconNow(g: Graphics2D, key: String, x: Double, y: Double, s: Double) = g.save {
         translate(x, y)
         val bg = ICON_BG[key] ?: ("3a3f55" to "7a809a")
-        paint = GradientPaint(0f, 0f, hex(bg.second), s.toFloat(), s.toFloat(), hex(bg.first))
-        fill(rrect(0.0, 0.0, s, s, s * 0.16))
-        stroke = stroke(2f); color = Color(0, 0, 0, 90); draw(rrect(0.0, 0.0, s, s, s * 0.16))
-        translate(s / 2, s / 2); scale(s / 64, s / 64)
-        glyph(this, key, hex(bg.first))
+        val tile = rrect(0.0, 0.0, s, s, s * 0.2)
+        paint = RadialGradientPaint((s * 0.35).toFloat(), (s * 0.3).toFloat(), (s * 0.95).toFloat(), floatArrayOf(0f, 1f), arrayOf(hex(bg.second), hex(bg.first)))
+        fill(tile)
+        save { translate(s / 2, s / 2); scale(s / 64, s / 64); glyph(this, key, hex(bg.first)) }
+        save { clip(tile); fill(ellipse(s * 0.5, -s * 0.05, s * 0.75, s * 0.42), Color(255, 255, 255, 55)) }
+        stroke = stroke(max(1.2f, (s / 24).toFloat())); color = hex(bg.first).shade(-0.6); draw(tile)
+        stroke = stroke(1f); color = Color(255, 255, 255, 70); draw(rrect(1.5, 1.5, s - 3, s - 3, s * 0.18))
     }
 
     private fun glyph(g: Graphics2D, key: String, bg: Color) = with(g) {
@@ -1014,7 +1049,10 @@ object Art {
         }
     }
 
-    fun gearIcon(g: Graphics2D, gear: Gear, x: Double, y: Double, s: Double, owned: Boolean) = g.save {
+    fun gearIcon(g: Graphics2D, gear: Gear, x: Double, y: Double, s: Double, owned: Boolean) =
+        g.drawImage(cached("gear", "${gear.id}:$owned", s) { gearIconNow(it, gear, 0.0, 0.0, s, owned) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+
+    private fun gearIconNow(g: Graphics2D, gear: Gear, x: Double, y: Double, s: Double, owned: Boolean) = g.save {
         translate(x, y)
         val rc = hex(RARITIES[gear.r].color)
         paint = GradientPaint(0f, 0f, rc.shade(-0.35), 0f, s.toFloat(), rc.shade(-0.65))
@@ -1040,7 +1078,10 @@ object Art {
         }
     }
 
-    fun heroPortrait(g: Graphics2D, look: Look, x: Double, y: Double, s: Double, bg: Color) = g.save {
+    fun heroPortrait(g: Graphics2D, look: Look, x: Double, y: Double, s: Double, bg: Color) =
+        g.drawImage(cached("hero", "$look:${bg.rgb}", s) { heroPortraitNow(it, look, 0.0, 0.0, s, bg) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+
+    private fun heroPortraitNow(g: Graphics2D, look: Look, x: Double, y: Double, s: Double, bg: Color) = g.save {
         paint = GradientPaint(x.toFloat(), y.toFloat(), bg.shade(0.25), x.toFloat(), (y + s).toFloat(), bg.shade(-0.25))
         val box = rrect(x, y, s, s, s * 0.14)
         fill(box)
@@ -1048,7 +1089,10 @@ object Art {
         drawChibi(this, look.copy(cape = null, aura = null), x + s * 0.47, y + s * 1.32, s / 46, 0.0, 0.0)
     }
 
-    fun petPortrait(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, owned: Boolean) = g.save {
+    fun petPortrait(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, owned: Boolean) =
+        g.drawImage(cached("petp", "${p.id}:$owned", s) { petPortraitNow(it, p, 0.0, 0.0, s, owned) }, Math.round(x - 4).toInt(), Math.round(y - 4).toInt(), null)
+
+    private fun petPortraitNow(g: Graphics2D, p: Pet, x: Double, y: Double, s: Double, owned: Boolean) = g.save {
         paint = GradientPaint(x.toFloat(), y.toFloat(), hex("4aa3d0"), x.toFloat(), (y + s).toFloat(), hex("2a5f8a"))
         fill(rrect(x, y, s, s, s * 0.14))
         if (!owned) alpha(0.35)

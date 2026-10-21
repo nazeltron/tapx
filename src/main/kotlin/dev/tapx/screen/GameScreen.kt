@@ -48,7 +48,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
     val pixels: IntArray = (image.raster.dataBuffer as DataBufferInt).data
     private val gfx: Graphics2D = image.createGraphics().apply {
-        setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF)
+        setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
     }
 
@@ -365,15 +365,15 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     // ================================================================== drawing helpers
     private fun text(s: String, x: Int, y: Int, c: Color = Color.WHITE, scale: Int = 1, align: Int = 0, outline: Boolean = true) {
-        val w = PixelFont.width(s, scale)
+        val w = GameFont.width(s, scale)
         val sx = when (align) { 1 -> x - w / 2; 2 -> x - w; else -> x }
-        if (outline) PixelFont.drawOutlined(gfx, s, sx, y, c, scale) else PixelFont.draw(gfx, s, sx, y, c, scale)
+        if (outline) GameFont.drawOutlined(gfx, s, sx, y, c, scale) else GameFont.draw(gfx, s, sx, y, c, scale)
     }
 
     private fun fit(s: String, maxW: Int, scale: Int = 1): String {
-        if (PixelFont.width(s, scale) <= maxW) return s
+        if (GameFont.width(s, scale) <= maxW) return s
         var r = s
-        while (r.isNotEmpty() && PixelFont.width("$r..", scale) > maxW) r = r.dropLast(1)
+        while (r.isNotEmpty() && GameFont.width("$r..", scale) > maxW) r = r.dropLast(1)
         return "$r.."
     }
 
@@ -385,20 +385,17 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     }
     private var drawingModal = false
 
-    private fun panel(x: Int, y: Int, w: Int, h: Int, fill: Color = hex("2b2d3c"), border: Color = hex("8a8c4a")) {
-        gfx.fill(Rectangle2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()), border)
-        gfx.fill(Rectangle2D.Double(x + 3.0, y + 3.0, w - 6.0, h - 6.0), fill)
+    /** A framed window: dark rim, soft vertical gradient, a lit top edge. */
+    private fun panel(x: Int, y: Int, w: Int, h: Int, top: Color = hex("323858"), bottom: Color = hex("1f2338")) {
+        gfx.drawImage(Widgets.panel(w, h, top, bottom), x, y, null)
     }
 
-    /** A clickable box; returns true if hovered. */
+    /** A glossy, raised game button; returns true if hovered. */
     private fun button(x: Int, y: Int, w: Int, h: Int, label: String, base: Color, enabled: Boolean = true, scale: Int = 1, id: String? = null, action: () -> Unit): Boolean {
         val hov = hovered(x, y, w, h)
-        val c = when { !enabled -> hex("4a4d5a"); hov -> base.shade(0.25); else -> base }
-        gfx.fill(Rectangle2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()), OUT)
-        gfx.fill(Rectangle2D.Double(x + 2.0, y + 2.0, w - 4.0, h - 4.0), c)
-        gfx.fill(Rectangle2D.Double(x + 2.0, y + 2.0, w - 4.0, 2.0), c.shade(0.3))
-        gfx.fill(Rectangle2D.Double(x + 2.0, y + h - 4.0, w - 4.0, 2.0), c.shade(-0.3))
-        if (label.isNotEmpty()) text(label, x + w / 2, y + (h - PixelFont.HEIGHT * scale) / 2, if (enabled) Color.WHITE else hex("9a9db0"), scale, 1)
+        val c = when { !enabled -> hex("5c6178"); hov -> base.shade(0.18); else -> base }
+        gfx.drawImage(Widgets.button(w, h, c), x, y, null)
+        if (label.isNotEmpty()) text(label, x + w / 2, y + (h - 3 - GameFont.HEIGHT * scale) / 2, if (enabled) Color.WHITE else hex("c4c8d6"), scale, 1)
         nextButtons += Button(id ?: "$x,$y", x, y, w, h, { if (enabled) { action() } else host.sfx(Sfx.ERROR) }, drawingList)
         return hov
     }
@@ -409,7 +406,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     fun render() {
         nextButtons = ArrayList()
         footer = ""
-        gfx.color = hex("14131c"); gfx.fillRect(0, 0, width, height)
+        gfx.color = hex("0b0d1a"); gfx.fillRect(0, 0, width, height)
         drawBattle()
         drawPanel()
         drawingModal = true
@@ -429,8 +426,10 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private fun drawSelection(b: Button) {
         gfx.save {
             if (b.inList) clip(Rectangle2D.Double(RX + 2.0, LIST_Y.toDouble(), RW - 4.0, LIST_H.toDouble()))
+            stroke = stroke(4f); color = Color(255, 230, 90, 90)
+            draw(rrect(b.x - 2.0, b.y - 2.0, b.w + 4.0, b.h + 4.0, 9.0))
             stroke = stroke(2f); color = hex("ffe34a")
-            draw(Rectangle2D.Double(b.x - 1.0, b.y - 1.0, b.w + 2.0, b.h + 2.0))
+            draw(rrect(b.x - 1.0, b.y - 1.0, b.w + 2.0, b.h + 2.0, 8.0))
         }
     }
 
@@ -497,7 +496,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private fun drawBattle() = gfx.save {
         val world = worldFor(d.stage)
         translate(BX.toDouble(), BY.toDouble())
-        clip(Rectangle2D.Double(0.0, 0.0, BW.toDouble(), BH.toDouble()))
+        clip(rrect(0.0, 0.0, BW.toDouble(), BH.toDouble(), 12.0))
         val shakeX = if (shake > 0) Random.nextDouble(-shake, shake) else 0.0
         val shakeY = if (shake > 0) Random.nextDouble(-shake, shake) else 0.0
         save {
@@ -513,9 +512,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             }
             val m = g.monster
             val sp = currentSpec()
-            if (m != null && sp != null) Art.drawMonster(this, sp, monPos().first, GY, ta, m.hitT, m.deathT, m.age, U * 0.95)
+            if (m != null && sp != null) Art.drawMonster(this, sp, monPos().first, GY, ta, m.hitT, m.deathT, m.age, U * 1.1)
             val (hx, hy) = heroPos()
-            Art.drawChibi(this, heroLook(), hx, hy, U * 1.3, ta, heroAtk)
+            Art.drawChibi(this, heroLook(), hx, hy, U * 1.45, ta, heroAtk)
             petDef(d.activePet)?.let { p ->
                 val homeX = hx - 38; val homeY = GY - 118 + sin(ta * 3) * 6
                 var px = homeX; var py = homeY
@@ -566,11 +565,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         if (flash > 0) save { alpha(min(1.0, flash)); fill(Rectangle2D.Double(0.0, 0.0, BW.toDouble(), BH.toDouble()), flashColor) }
         banner?.let { b ->
             val y = 190
-            fill(path { moveTo(30.0, y - 4.0); lineTo(BW - 20.0, y - 4.0); lineTo(BW - 30.0, y + 26.0); lineTo(20.0, y + 26.0); closePath() }, Color(20, 24, 40, 190))
-            text(b.text, BW / 2, y + 4, b.color, 2, 1)
+            drawImage(Widgets.ribbon(BW - 80, 34, hex("2a2f58")), 40, y - 8, null)
+            text(b.text, BW / 2, y + 1, b.color, 2, 1)
         }
-        // border
-        stroke = stroke(3f); color = hex("8a8c4a"); draw(Rectangle2D.Double(1.5, 1.5, BW - 3.0, BH - 3.0))
+        // frame
+        stroke = stroke(4f); color = hex("0e1020"); draw(rrect(1.0, 1.0, BW - 2.0, BH - 2.0, 12.0))
+        stroke = stroke(2f); color = hex("6a74a8"); draw(rrect(3.0, 3.0, BW - 6.0, BH - 6.0, 10.0))
     }
 
     private fun heroLook(): Look {
@@ -592,25 +592,28 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         iconButton(92, 6, 26, "top") { modal = TopModal(host.leaderboard()) }
         iconButton(122, 6, 26, "gear") { modal = SettingsModal() }
 
-        // stage pips
-        val cy = 22.0
-        fun pip(x: Double, r: Double, stage: Int, cur: Boolean) {
-            if (stage < 1) return
-            val w = worldFor(stage)
-            gfx.save {
-                clip(circle(x, cy, r))
-                paint = GradientPaint(0f, (cy - r).toFloat(), hex(w.sky.first), 0f, (cy + r).toFloat(), hex(w.sky.second))
-                fill(Rectangle2D.Double(x - r, cy - r, r * 2, r * 2))
-                fill(Rectangle2D.Double(x - r * 0.3, cy - r * 0.4, r * 0.6, r), hex(w.mid))
-                fill(Rectangle2D.Double(x - r, cy + r * 0.45, r * 2, r), hex(w.ground))
+        // stage pips (drawn once per stage)
+        gfx.drawImage(Widgets.custom("pips:${d.stage}", 180, 44) {
+            val cy = 22.0
+            fun pip(x: Double, r: Double, stage: Int, cur: Boolean) {
+                if (stage < 1) return
+                val w = worldFor(stage)
+                save {
+                    clip(circle(x, cy, r))
+                    paint = GradientPaint(0f, (cy - r).toFloat(), hex(w.sky.first), 0f, (cy + r).toFloat(), hex(w.sky.second))
+                    fill(Rectangle2D.Double(x - r, cy - r, r * 2, r * 2))
+                    fill(Rectangle2D.Double(x - r * 0.3, cy - r * 0.4, r * 0.6, r), hex(w.mid))
+                    fill(Rectangle2D.Double(x - r, cy + r * 0.45, r * 2, r), hex(w.ground))
+                    fill(ellipse(x - r * 0.2, cy - r * 0.7, r * 0.8, r * 0.35), Color(255, 255, 255, 60))
+                }
+                stroke = stroke(if (cur) 3f else 2f); color = if (cur) Color.WHITE else Color(255, 255, 255, 170); draw(circle(x, cy, r))
+                GameFont.drawOutlined(this, stage.toString(), (x - GameFont.width(stage.toString()) / 2.0).toInt(), (cy + r * 0.4).toInt(), Color.WHITE)
             }
-            gfx.stroke = stroke(if (cur) 3f else 2f); gfx.color = if (cur) Color.WHITE else Color(255, 255, 255, 170); gfx.draw(circle(x, cy, r))
-            text(stage.toString(), x.toInt(), (cy + r * 0.45).toInt(), Color.WHITE, 1, 1)
-        }
-        for (dd in listOf(-1, 1)) for (i in 1..3) gfx.fill(circle(BW / 2.0 + dd * (24 + i * 7), cy, 1.6), Color(255, 255, 255, 190))
-        pip(BW / 2.0 - 60, 13.0, d.stage - 1, false)
-        pip(BW / 2.0, 18.0, d.stage, true)
-        pip(BW / 2.0 + 60, 13.0, d.stage + 1, false)
+            for (dd in listOf(-1, 1)) for (i in 1..3) fill(circle(90.0 + dd * (24 + i * 7), cy, 1.6), Color(255, 255, 255, 190))
+            pip(30.0, 13.0, d.stage - 1, false)
+            pip(90.0, 18.0, d.stage, true)
+            pip(150.0, 13.0, d.stage + 1, false)
+        }, (BW / 2 - 90), 0, null)
 
         // wave / boss indicator + boss button
         if (m != null && m.boss && !m.dead) {
@@ -625,18 +628,23 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
 
         // HP bar
-        val bw = 300.0; val bh = 18.0; val bx = BW / 2.0 - bw / 2; val by = 46.0
-        fun para(x: Double, w: Double) = path { moveTo(x, by + bh); lineTo(x + 8, by); lineTo(x + w + 8, by); lineTo(x + w, by + bh); closePath() }
-        gfx.fill(para(bx, bw), hex("1b2a44"))
+        val bw = 300.0; val bh = 20.0; val bx = BW / 2.0 - bw / 2; val by = 46.0
+        gfx.fill(rrect(bx - 2, by - 2, bw + 4, bh + 4, 10.0), hex("0e1020"))
+        gfx.fill(rrect(bx, by, bw, bh, 8.0), hex("2a1a24"))
         if (m != null) {
             val f = clamp(m.hp / m.maxHp, 0.0, 1.0)
-            gfx.fill(para(bx, bw * f), if (m.boss) hex("e0402a") else hex("f06a2a"))
-            gfx.fill(Rectangle2D.Double(bx + 8, by + 2, bw * f, 4.0), Color(255, 255, 255, 60))
-            if (m.boss) Art.skull(gfx, bx - 6, by + bh / 2, 10.0)
+            if (f > 0) gfx.save {
+                clip(rrect(bx, by, bw, bh, 8.0))
+                val c = if (m.boss) hex("e8342a") else hex("f2662a")
+                paint = GradientPaint(0f, by.toFloat(), c.shade(0.35), 0f, (by + bh).toFloat(), c.shade(-0.25))
+                fill(Rectangle2D.Double(bx, by, bw * f, bh))
+                fill(rrect(bx + 3, by + 2, bw * f - 6, 6.0, 3.0), Color(255, 255, 255, 70))
+            }
+            if (m.boss) Art.skull(gfx, bx - 6, by + bh / 2, 11.0)
             text(fit(m.name, 170), (bx + 14).toInt(), (by + 6).toInt(), Color.WHITE)
-            text("${fmt(ceil(m.hp))} HP", (bx + bw - 4).toInt(), (by + 6).toInt(), Color.WHITE, 1, 2)
+            text("${fmt(ceil(m.hp))} HP", (bx + bw - 8).toInt(), (by + 6).toInt(), Color.WHITE, 1, 2)
         }
-        gfx.stroke = stroke(2f); gfx.color = OUT; gfx.draw(para(bx, bw))
+        gfx.stroke = stroke(1.2f); gfx.color = Color(255, 255, 255, 60); gfx.draw(rrect(bx, by, bw, bh, 8.0))
 
         // gold
         val (gx, gy) = goldPos()
@@ -645,8 +653,12 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
         // mana + spells (left column)
         val mx = 10.0; val my = 108.0
-        gfx.fill(rrect(mx, my, 44.0, 8.0, 3.0), hex("151726"))
-        gfx.fill(rrect(mx, my, 44.0 * (d.mana / g.maxMana()), 8.0, 3.0), hex("4aa8ff"))
+        gfx.fill(rrect(mx - 1, my - 1, 46.0, 10.0, 5.0), hex("0e1020"))
+        gfx.save {
+            clip(rrect(mx, my, 44.0, 8.0, 4.0))
+            paint = GradientPaint(0f, my.toFloat(), hex("9ad8ff"), 0f, (my + 8).toFloat(), hex("2a6ad0"))
+            fill(Rectangle2D.Double(mx, my, 44.0 * (d.mana / g.maxMana()), 8.0))
+        }
         text("${floor(d.mana).toInt()}", 32, (my - 10).toInt(), hex("8ad8ff"), 1, 1)
         SKILLS.forEachIndexed { i, sk -> skillButton(sk, 10, 120 + i * 46) }
 
@@ -654,9 +666,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         var yy = 96
         for ((id, left) in d.buffs) {
             val name = SKILLS.firstOrNull { it.id == id }?.name ?: SHOP_ITEMS.firstOrNull { it.id == id }?.name ?: continue
-            gfx.fill(rrect(BW - 128.0, yy.toDouble(), 120.0, 14.0, 4.0), Color(0, 0, 0, 120))
-            text(fit("$name ${fmtTime(left)}", 114), BW - 124, yy + 4, hex("ffe08a"))
-            yy += 17
+            gfx.fill(rrect(BW - 130.0, yy.toDouble(), 122.0, 16.0, 8.0), Color(10, 12, 28, 170))
+            text(fit("$name ${fmtTime(left)}", 112), BW - 124, yy + 4, hex("ffe08a"))
+            yy += 19
         }
     }
 
@@ -707,9 +719,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             val c = hex(TAB_COLORS[id]!!)
             val active = tab == id
             val hov = hovered(x, y, w, h)
-            gfx.fill(Rectangle2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()), OUT)
-            gfx.fill(Rectangle2D.Double(x + 2.0, y + 2.0, w - 4.0, h - 4.0), if (active) c.shade(0.15) else if (hov) c.shade(-0.1) else c.shade(-0.35))
-            if (active) gfx.fill(Rectangle2D.Double(x + 2.0, y + 2.0, w - 4.0, 3.0), Color.WHITE)
+            gfx.drawImage(Widgets.tab(w, h, if (active) c.shade(0.12) else if (hov) c.shade(-0.12) else c.shade(-0.38), active), x, y, null)
             tabIcon(id, x + w / 2.0, y + 18.0)
             text(label, x + w / 2, y + h - 11, if (active) Color.WHITE else hex("c8cbd8"), 1, 1)
             if (tabBadge(id)) { gfx.fillStroke(circle(x + w - 6.0, y + 7.0, 4.0), hex("e8392a"), 1.5f, Color.WHITE) }
@@ -717,7 +727,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         }
         // header
         val hy = RY + 58
-        gfx.fill(Rectangle2D.Double(RX + 6.0, hy.toDouble(), RW - 12.0, 26.0), hex("4a4d5e"))
+        gfx.drawImage(Widgets.bar(RW - 12, 26, hex("454c72"), hex("2c3150")), RX + 6, hy, null)
         when (tab) {
             "hero" -> headerStat(fmt(g.tapDamage()), "TAP DAMAGE")
             "allies" -> headerStat(fmt(g.heroDps()), "ALLY DPS")
@@ -767,12 +777,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         if (listContentH > LIST_H) {
             val (sy, sh) = thumb()
             val hot = dragging || (modal == null && hovered(SB_X - 4, LIST_Y, SB_W + 8, LIST_H))
-            gfx.fill(Rectangle2D.Double(SB_X.toDouble(), LIST_Y.toDouble(), SB_W.toDouble(), LIST_H.toDouble()), hex("23253a"))
-            gfx.fill(Rectangle2D.Double(SB_X + 1.0, sy.toDouble(), SB_W - 2.0, sh.toDouble()), if (hot) hex("ffd23a") else hex("8a8c9a"))
+            gfx.fill(rrect(SB_X.toDouble(), LIST_Y.toDouble(), SB_W.toDouble(), LIST_H.toDouble(), 5.0), hex("161a2a"))
+            gfx.drawImage(Widgets.button(SB_W, sh, if (hot) hex("ffc23a") else hex("7a83a8"), lip = false), SB_X, sy, null)
             hit(SB_X - 4, LIST_Y, SB_W + 8, LIST_H, "scrollbar") { dragging = true; dragTo(curY) }
         } else dragging = false
         // footer
-        gfx.fill(Rectangle2D.Double(RX + 6.0, RY + RH - 66.0, RW - 12.0, 60.0), hex("22243a"))
+        gfx.fill(rrect(RX + 6.0, RY + RH - 66.0, RW - 12.0, 60.0, 8.0), hex("171a2b"))
+        gfx.stroke = stroke(1.5f); gfx.color = hex("3a4064"); gfx.draw(rrect(RX + 6.0, RY + RH - 66.0, RW - 12.0, 60.0, 8.0))
         val lines = wrap(footer.ifEmpty { "Move the mouse to aim, LEFT-CLICK to attack and press buttons, scroll the MOUSE WHEEL for lists. SHIFT: back" }, RW - 24)
         lines.take(4).forEachIndexed { i, l -> text(l, RX + 12, RY + RH - 60 + i * 12, hex("c8cbd8")) }
     }
@@ -780,7 +791,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     private fun headerStat(big: String, small: String) {
         val hy = RY + 58
         text(big, RX + 12, hy + 6, Color.WHITE, 2)
-        text(small, RX + 18 + PixelFont.width(big, 2), hy + 13, hex("c8cbd8"))
+        text(small, RX + 18 + GameFont.width(big, 2), hy + 13, hex("c8cbd8"))
     }
 
     private fun wrap(s: String, maxW: Int): List<String> {
@@ -788,7 +799,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         var line = ""
         for (word in s.split(' ')) {
             val test = if (line.isEmpty()) word else "$line $word"
-            if (PixelFont.width(test) > maxW && line.isNotEmpty()) { out += line; line = word } else line = test
+            if (GameFont.width(test) > maxW && line.isNotEmpty()) { out += line; line = word } else line = test
         }
         if (line.isNotEmpty()) out += line
         return out
@@ -820,9 +831,9 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     // ------------------------------------------------------------------ list rows
     private class Row(val h: Int, val draw: (Int, Int, Int) -> Unit)
 
-    private fun section(title: String) = Row(24) { x, y, w ->
-        gfx.fill(Rectangle2D.Double(x.toDouble(), y + 4.0, w.toDouble(), 18.0), hex("22243a"))
-        text(title, x + w / 2, y + 9, Color.WHITE, 1, 1)
+    private fun section(title: String) = Row(26) { x, y, w ->
+        gfx.drawImage(Widgets.ribbon(w, 20, hex("5a4aa8")), x, y + 4, null)
+        text(title, x + w / 2, y + 10, hex("fff2c8"), 1, 1)
     }
 
     /** A standard upgrade row with an icon, title, two lines of text and a buy button. */
@@ -831,21 +842,21 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         cost: String?, costIcon: String, label: String, enabled: Boolean, glow: Boolean = false, hover: String = "", action: () -> Boolean,
     ) = Row(52) { x, y, w ->
         val hov = hovered(x, y, w, 50)
-        gfx.fill(Rectangle2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), 50.0), if (hov) hex("3a3d52") else hex("34374a"))
-        gfx.fill(Rectangle2D.Double(x.toDouble(), y + 48.0, w.toDouble(), 2.0), hex("232534"))
+        gfx.drawImage(Widgets.card(w, 49, hov), x, y, null)
+        gfx.drawImage(Widgets.iconFrame(), x + 2, y + 2, null)
         icon(x + 4, y + 4)
         text(fit(title, w - 160, 1), x + 52, y + 6, Color.WHITE)
         text(fit(line1, w - 160), x + 52, y + 19, hex("8ad8ff"))
         text(fit(line2, w - 160), x + 52, y + 32, hex("c8cbd8"))
         if (hov && hover.isNotEmpty()) footer = hover
         val bx = x + w - 104; val by = y + 5
-        val c = if (glow && enabled) hex("d0861a") else hex("5b6074")
+        val c = if (glow && enabled) hex("f08a1a") else if (enabled) hex("3a9a3a") else hex("5b6074")
         button(bx, by, 100, 40, "", c, enabled, id = id) { if (action()) host.sfx(Sfx.BUY) else host.sfx(Sfx.ERROR) }
         if (cost != null) {
             when (costIcon) { "coin" -> Art.coin(gfx, bx + 14.0, by + 12.0, 6.0); "gem" -> Art.gem(gfx, bx + 14.0, by + 12.0, 6.0); "relic" -> Art.relic(gfx, bx + 14.0, by + 12.0, 6.0) }
-            text(fit(cost, 74), bx + 24, by + 8, if (enabled) Color.WHITE else hex("aab0c0"))
-            text(label, bx + 50, by + 24, if (enabled) hex("ffe8a0") else hex("9a9db0"), 1, 1)
-        } else text(label, bx + 50, by + 16, if (enabled) Color.WHITE else hex("9a9db0"), 1, 1)
+            text(fit(cost, 74), bx + 24, by + 7, if (enabled) Color.WHITE else hex("d0d4e0"))
+            text(label, bx + 50, by + 23, if (enabled) hex("fff0b0") else hex("c4c8d6"), 1, 1)
+        } else text(label, bx + 50, by + 15, if (enabled) Color.WHITE else hex("c4c8d6"), 1, 1)
     }
 
     private fun buildList(): List<Row> = when (tab) {
@@ -1140,10 +1151,10 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
             gfx.save { alpha(0.6); fill(Rectangle2D.Double(0.0, 0.0, this@GameScreen.width.toDouble(), this@GameScreen.height.toDouble()), Color.BLACK) }
             nextButtons.clear() // only the modal is clickable
             panel(x, y, w, h)
-            gfx.fill(Rectangle2D.Double(x + 3.0, y + 3.0, w - 6.0, 32.0), hex("4a4d5e"))
-            text(title, x + w / 2, y + 12, Color.WHITE, 2, 1)
+            gfx.drawImage(Widgets.ribbon(w - 60, 30, hex("d08a1a")), x + 30, y - 8, null)
+            text(title, x + w / 2, y - 1, Color.WHITE, 2, 1)
             body() // first, so a pop-up's main button gets the default highlight
-            button(x + w - 34, y + 6, 26, 26, "X", hex("c0392b")) { close() }
+            button(x + w - 34, y + 8, 26, 26, "X", hex("d0402a")) { close() }
         }
         abstract fun body()
         fun close() { modal = null; host.sfx(Sfx.CLICK); selected = "tap" }
@@ -1229,7 +1240,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                 val target = a.tiers[next ?: a.tiers.lastIndex]
                 gfx.fill(Rectangle2D.Double(x + 12.0, ry.toDouble(), w - 24.0, 30.0), hex("34374a"))
                 text(a.name, x + 20, ry + 4, Color.WHITE)
-                var sx = x + 20 + PixelFont.width(a.name) + 8
+                var sx = x + 20 + GameFont.width(a.name) + 8
                 a.tiers.indices.forEach { ti -> text("*", sx, ry + 4, if ("${a.key}_$ti" in d.achievements) hex("ffd23a") else hex("5a5e76")); sx += 8 }
                 text(a.text(target), x + 20, ry + 17, hex("c8cbd8"))
                 val bx = x + w - 230.0

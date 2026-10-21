@@ -9,8 +9,11 @@ crosshair, XP bar and locator bar sprites (waypoint ranges are also zeroed while
 head rotation (re-centred with relative rotation packets), wheel = ServerboundSetCarriedItemPacket;
 it drops item/inventory packets. The cursor is overlaid on the map colours every 25 ms, separately
 from the full frame (`screen-fps`, default 20). WASD/space/shift come from PlayerInputEvent.
-Rendering budget: `./gradlew preview` prints the frame cost; character bodies, icons, coins and outlined
-text are cached as sprites, and only visible list rows are drawn. Gems are the paid currency (`/tapx gems ...` for the
+Look: polished mobile-game style (not pixel art): anti-aliased Java2D with gradients, Lilita One font
+(GameFont), glossy cached widgets (Widgets), ordered two-colour dithering to map colours (Palette).
+Rendering budget: `./gradlew preview` prints the frame cost (~7 ms render + ~2 ms palette). Characters
+(per quantised pose), pets, icons, coins, portraits, widgets and text are cached sprites; only visible
+list rows are drawn. Gems are the paid currency (`/tapx gems ...` for the
 web store). No resource pack. `web/` is the old
 browser prototype, reference only.
 

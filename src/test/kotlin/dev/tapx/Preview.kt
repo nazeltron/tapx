@@ -48,7 +48,7 @@ fun main(args: Array<String>) {
     val ids = ByteArray(896 * 512)
     fun shot(name: String) {
         screen.render()
-        Palette.convert(screen.pixels, ids)
+        Palette.convert(screen.pixels, ids, 896)
         screen.overlayCursor(ids)
         val img = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)
         for (i in ids.indices) {
@@ -88,8 +88,8 @@ fun main(args: Array<String>) {
     val diff = BufferedImage(896, 512, BufferedImage.TYPE_INT_RGB)
     var changed = 0
     repeat(10) {
-        screen.render(); Palette.convert(screen.pixels, ids); val a = ids.copyOf()
-        step(1); screen.render(); Palette.convert(screen.pixels, ids)
+        screen.render(); Palette.convert(screen.pixels, ids, 896); val a = ids.copyOf()
+        step(1); screen.render(); Palette.convert(screen.pixels, ids, 896)
         for (i in ids.indices) if (ids[i] != a[i]) { diff.setRGB(i % 896, i / 896, 0xff0000); changed++ }
     }
     println("avg changed pixels per idle frame: ${changed / 10}")
@@ -104,16 +104,16 @@ fun main(args: Array<String>) {
         dev.tapx.screen.Art.drawPet(g, PETS[0], 1100.0, 420.0, 2.0, 0.3)
         g.dispose()
         val ids2 = ByteArray(1200 * 520); val px = IntArray(1200 * 520); img.getRGB(0, 0, 1200, 520, px, 0, 1200)
-        Palette.convert(px, ids2)
+        Palette.convert(px, ids2, 1200)
         for (i in ids2.indices) img.setRGB(i % 1200, i / 1200, MapColor.getColorFromPackedId(ids2[i].toInt() and 255))
         ImageIO.write(img, "png", File(out, "characters.png"))
     }
     // how long one full frame takes (render + palette), for picking the fps
     data.stage = 34; game.monster = null; step(10)
-    repeat(300) { step(1); screen.render(); Palette.convert(screen.pixels, ids) }
+    repeat(300) { step(1); screen.render(); Palette.convert(screen.pixels, ids, 896) }
     var tr = 0L; var tc = 0L; var tu = 0L
     repeat(300) {
-        val a = System.nanoTime(); step(1); val b = System.nanoTime(); screen.render(); val c = System.nanoTime(); Palette.convert(screen.pixels, ids)
+        val a = System.nanoTime(); step(1); val b = System.nanoTime(); screen.render(); val c = System.nanoTime(); Palette.convert(screen.pixels, ids, 896)
         tu += b - a; tr += c - b; tc += System.nanoTime() - c
     }
     println("frame cost: update %.2f ms, render %.2f ms, palette %.2f ms".format(tu / 300 / 1e6, tr / 300 / 1e6, tc / 300 / 1e6))
