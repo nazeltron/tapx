@@ -131,6 +131,13 @@ When the piggy bank fills (default $100 of purchases) everyone gets a 2x EVERYTH
 `/kick /ban /tempban /unban`, `/vanish`, `/invsee`, `/ec`, `/ci`, `/hat`, `/repair`, `/workbench`, `/day /night /sun /rain`,
 `/seen`, `/sudo`, `/nick`. For everyone: `/msg /r`, `/ping`, `/list`, `/afk`, `/rules`, `/store`, `/discord`, `/link`, `/promo`.
 
+**Animated ranks, names and tab (UI pack)** - every player gets a second tiny resource pack on join with a text
+shader that animates certain colours: rank and staff tags shine (a glossy band sweeps across) or flow through their
+colours (OWNER purple→pink, ELITE red→orange, TITAN magenta→purple, LEGEND rainbow), names get a softer version in the
+same colour, and the tab title waves while the lines, footer and the chat "TAPX" prefix flow gold→orange→pink. It
+works everywhere text is drawn (tab, chat, /list). The styles live in `TextFx.kt`, which also generates the shader.
+Without the pack players see the same colours, just not animated. `text-animations: false` turns it off.
+
 **Tab list and chat** - DrillSim-style tab: every online player (also those on the game screen) as
 `RANK Name ✦best-stage [prestiges]`, sorted staff > rank > stage; header with the title, season and any running
 event; footer with ONLINE / TPS / PING and the Discord invite (`tab.header`, `tab.season`, `tab.address`). Chat uses the

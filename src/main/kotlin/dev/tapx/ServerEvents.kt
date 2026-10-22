@@ -51,7 +51,8 @@ object ServerEvents {
 
     private fun fmtMult(m: Double) = if (m % 1.0 == 0.0) m.toLong().toString() else "%.2f".format(m).trimEnd('0').trimEnd('.')
 
-    private fun rainbow(text: String, shift: Int = 0) = "<rainbow:$shift>$text</rainbow>"
+    /** Animated rainbow with the UI pack (see [TextFx]), pink without it. */
+    private fun rainbow(text: String) = TextFx.wrap("event", text)
 
     fun enable(p: TapXPlugin) {
         plugin = p

@@ -25,10 +25,10 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Coloured rank tag for chat/tab, e.g. "VIP" in bold orange. */
+/** Animated rank tag for chat/tab, e.g. "VIP" in bold orange with a moving shine (see [TextFx]). */
 fun rankTag(rank: String?): String {
     val r = rankDef(rank) ?: return ""
-    return if (r.color == "rainbow") "<b><rainbow>${r.name}</rainbow></b>" else "<b><${r.color}>${r.name}</${r.color}></b>"
+    return "<b>${TextFx.wrap("tag:${r.key}", r.name)}</b>"
 }
 
 class TapXPlugin : JavaPlugin(), Listener, TabExecutor {

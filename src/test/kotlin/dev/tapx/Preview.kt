@@ -128,5 +128,11 @@ fun main(args: Array<String>) {
     println("frame cost: update %.2f ms, render %.2f ms, palette %.2f ms".format(tu / 300 / 1e6, tr / 300 / 1e6, tc / 300 / 1e6))
     // the public copy of the screen pack (the plugin's fallback download)
     File("pack").mkdirs(); File("pack/tapx-screen-pack.zip").writeBytes(ScreenPack.buildZip())
+    File("pack/tapx-ui-pack.zip").writeBytes(ScreenPack.buildUiZip())
+    File(out, "rendertype_text.vsh").writeText(TextFx.vertexShader())
+    // the animation styles, for scratch tools that preview them
+    File(out, "textfx.json").writeText(TextFx.STYLES.joinToString(",", "{", "}") { st ->
+        "\"${st.key}\":{\"kind\":${st.kind.id},\"c1\":\"%06x\",\"c2\":\"%06x\",\"c3\":\"%06x\",\"speed\":${st.speed},\"shine\":${st.shine},\"wave\":${st.wave}}".format(st.c1, st.c2, st.c3)
+    })
     println("Wrote previews to ${out.absolutePath}")
 }

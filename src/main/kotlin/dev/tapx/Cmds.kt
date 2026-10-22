@@ -7,7 +7,8 @@ import org.bukkit.command.PluginCommand
 import org.bukkit.entity.Player
 
 /** Chat prefix used by every TapX message. */
-const val PREFIX = "<gradient:#ffcf3a:#ff5a8a><b>TAPX</b></gradient> <dark_gray>»</dark_gray> "
+/** Chat prefix; #ffcf3d is the animated "prefix" style of [TextFx] (plain gold without the UI pack). */
+const val PREFIX = "<b><#ffcf3d>TAPX</#ffcf3d></b> <dark_gray>»</dark_gray> "
 
 fun CommandSender.say(text: String) = sendMessage(mm(PREFIX + text))
 fun CommandSender.sayRaw(text: String) = sendMessage(mm(text))

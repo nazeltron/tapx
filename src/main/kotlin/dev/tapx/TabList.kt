@@ -17,9 +17,9 @@ import org.bukkit.event.player.PlayerJoinEvent
  */
 object TabList : Listener {
     private lateinit var plugin: TapXPlugin
-    private const val DEFAULT_HEADER = "<b><gradient:#ffcf3a:#ff7a3a:#ff5a8a>TapX</gradient></b>"
-    /** The 3.3.0 default (magenta), replaced by the current one. */
-    private const val OLD_HEADER = "<b><#ff4ae0>Tap</#ff4ae0><white>X</white></b>"
+    private val DEFAULT_HEADER = "<b>${TextFx.wrap("title", "TapX")}</b>"
+    /** Earlier defaults (3.3.x), replaced by the current animated one. */
+    private val OLD_HEADERS = setOf("<b><#ff4ae0>Tap</#ff4ae0><white>X</white></b>", "<b><gradient:#ffcf3a:#ff7a3a:#ff5a8a>TapX</gradient></b>")
 
     fun enable(p: TapXPlugin) {
         plugin = p
@@ -37,13 +37,13 @@ object TabList : Listener {
     }
 
     /** The tag in front of a name: staff rank if any, else the store rank ("" for none). */
-    fun tag(p: Player): String = staff(p)?.let { "<b><${it.color}>${it.name}</${it.color}></b>" } ?: rankTag(plugin.session(p)?.d?.rank)
+    fun tag(p: Player): String = staff(p)?.let { "<b>${TextFx.wrap("tag:${it.key}", it.name)}</b>" } ?: rankTag(plugin.session(p)?.d?.rank)
 
-    /** Colour of a player's name: staff colour, else rank colour (rainbow for LEGEND), else grey. */
+    /** Colour of a player's name: the staff or rank colour with a softer animation, else grey. */
     private fun nameColor(p: Player): Pair<String, String> {
-        staff(p)?.let { return "<${it.color}>" to "</${it.color}>" }
-        val r = rankDef(plugin.session(p)?.d?.rank) ?: return "<#aaaaaa>" to "</#aaaaaa>"
-        return if (r.color == "rainbow") "<rainbow>" to "</rainbow>" else "<${r.color}>" to "</${r.color}>"
+        val key = staff(p)?.key ?: rankDef(plugin.session(p)?.d?.rank)?.key ?: return "<#aaaaaa>" to "</#aaaaaa>"
+        val c = TextFx.color("name:$key")
+        return "<$c>" to "</$c>"
     }
 
     private fun nameOf(p: Player) = Essentials.nick(p)?.let { "<italic>$it</italic>" } ?: p.name
@@ -74,21 +74,21 @@ object TabList : Listener {
     fun refreshAll() {
         val online = Bukkit.getOnlinePlayers().filter { it.uniqueId !in Essentials.vanished }
         val tps = Bukkit.getTPS()[0].coerceAtMost(20.0)
-        val title = plugin.config.getString("tab.header", "")!!.takeUnless { it.isBlank() || it == OLD_HEADER } ?: DEFAULT_HEADER
+        val title = plugin.config.getString("tab.header", "")!!.takeUnless { it.isBlank() || it in OLD_HEADERS } ?: DEFAULT_HEADER
         val season = smallCaps(plugin.config.getString("tab.season", "Season I")!!)
         val address = plugin.config.getString("tab.address", "")!!.ifBlank { Discord.invite().removePrefix("https://").removePrefix("http://") }.let(::smallCaps)
-        val top = ServerEvents.label()?.let { "<b><rainbow>ADMIN ABUSE</rainbow></b> <dark_gray>|</dark_gray> <rainbow>${smallCaps(it)}</rainbow> <gray>${smallCaps("for")} <yellow>${fmtTime(ServerEvents.secondsLeft())}" }
+        val top = ServerEvents.label()?.let { "<b>${TextFx.wrap("event", "ADMIN ABUSE")}</b> <dark_gray>|</dark_gray> ${TextFx.wrap("event", smallCaps(it))} <gray>${smallCaps("for")} <yellow>${fmtTime(ServerEvents.secondsLeft())}" }
             ?: if (FlashSale.active()) "<b><yellow>⚡ FLASH SALE</yellow></b> <dark_gray>|</dark_gray> <white>${smallCaps("${FlashSale.percent}% off the gem shop")}" else null
-        val line = "<gradient:#ffcf3a:#ff7a3a:#ff5a8a><st>                                                  </st></gradient>"
+        val line = TextFx.wrap("line", "<st>                                                  </st>")
         for (p in Bukkit.getOnlinePlayers()) {
             refresh(p)
             val ping = p.ping
             val pingColor = if (ping < 80) "#55ff55" else if (ping < 180) "#ffff55" else "#ff5555"
             p.sendPlayerListHeaderAndFooter(
-                mm("${top?.let { "$it\n" } ?: ""}$line\n$title\n<white>$season</white>\n"),
-                mm("\n<#ffb03a>${smallCaps("Online:")} </#ffb03a><white>${online.size}</white> <dark_gray>|</dark_gray> <#ffb03a>${smallCaps("TPS:")} </#ffb03a><white>${"%.0f".format(tps)}</white> " +
-                    "<dark_gray>|</dark_gray> <#ffb03a>${smallCaps("Ping:")} </#ffb03a><$pingColor>$ping</$pingColor>\n\n" +
-                    "<gradient:#ffcf3a:#ff7a3a:#ff5a8a>$address</gradient>\n$line"),
+                mm("${top?.let { "$it\n" } ?: ""}$line\n$title\n${TextFx.wrap("season", season)}\n"),
+                mm("\n${TextFx.wrap("label", smallCaps("Online:"))} <white>${online.size}</white> <dark_gray>|</dark_gray> ${TextFx.wrap("label", smallCaps("TPS:"))} <white>${"%.0f".format(tps)}</white> " +
+                    "<dark_gray>|</dark_gray> ${TextFx.wrap("label", smallCaps("Ping:"))} <$pingColor>$ping</$pingColor>\n\n" +
+                    "${TextFx.wrap("address", address)}\n$line"),
             )
         }
     }
@@ -99,7 +99,7 @@ object TabList : Listener {
         val p = e.player
         if (!p.hasPlayedBefore() && plugin.config.getBoolean("chat.first-join-broadcast", true)) {
             val n = Bukkit.getOfflinePlayers().size
-            e.joinMessage(mm("<gradient:#ffcf3a:#ff5a8a><b>TAPX</b></gradient> <dark_gray>» <white>${p.name} <gray>joined for the first time! <dark_gray>[<yellow>#$n<dark_gray>]"))
+            e.joinMessage(mm("$PREFIX<white>${p.name} <gray>joined for the first time! <dark_gray>[<yellow>#$n<dark_gray>]"))
         } else e.joinMessage(mm("<dark_gray>[<green>+<dark_gray>] <gray>${p.name}"))
     }
 

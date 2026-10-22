@@ -18,7 +18,9 @@ import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 
 /**
- * A tiny resource pack, only for players on the game screen, that blanks the crosshair, XP bar and
+ * Two tiny resource packs. The UI pack (everyone, from join) has the text shader that animates rank
+ * tags, names and the tab list in tab and chat ([TextFx]). The screen pack, only for players on the
+ * game screen, blanks the crosshair, XP bar and
  * locator bar (the only HUD left once players aren't in spectator mode). It is served over plain
  * HTTP on the Minecraft port itself: a connection that starts with "GET " gets the pack instead of the game,
  * so no extra port or web host is needed. `resource-pack-url` in the config overrides this (for
@@ -28,12 +30,16 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
     val zip: ByteArray = buildZip()
     private val sha1: ByteArray = MessageDigest.getInstance("SHA-1").digest(zip)
     private val hash = sha1.joinToString("") { "%02x".format(it) }
+    val uiZip: ByteArray = buildUiZip()
+    private val uiSha1: ByteArray = MessageDigest.getInstance("SHA-1").digest(uiZip)
+    private val uiHash = uiSha1.joinToString("") { "%02x".format(it) }
     private val listenerKey = Key.key("tapx", "pack")
 
     fun enable() {
         plugin.dataFolder.mkdirs()
         plugin.dataFolder.resolve("tapx-screen-pack.zip").writeBytes(zip)
-        if (!plugin.config.getBoolean("hide-crosshair", true)) return
+        plugin.dataFolder.resolve("tapx-ui-pack.zip").writeBytes(uiZip)
+        if (!plugin.config.getBoolean("hide-crosshair", true) && !uiEnabled()) return
         ChannelInitializeListenerHolder.addListener(listenerKey) { ch -> ch.pipeline().addFirst("tapx_http", HttpSniffer()) }
     }
 
@@ -41,15 +47,38 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
         if (ChannelInitializeListenerHolder.hasListener(listenerKey)) ChannelInitializeListenerHolder.removeListener(listenerKey)
     }
 
-    private fun url(p: Player): String? {
-        plugin.config.getString("resource-pack-url", "")?.takeIf { it.isNotBlank() }?.let { return it }
+    private fun url(p: Player, ui: Boolean = false): String? {
+        plugin.config.getString(if (ui) "ui-pack-url" else "resource-pack-url", "")?.takeIf { it.isNotBlank() }?.let { return it }
         val host = p.virtualHost ?: return null
         val name = host.hostString.trimEnd('.').ifBlank { return null }
         val port = if (host.port > 0) host.port else Bukkit.getPort()
-        return "http://${if (':' in name) "[$name]" else name}:$port/tapx/$hash.zip"
+        return "http://${if (':' in name) "[$name]" else name}:$port/tapx/${if (ui) uiHash else hash}.zip"
     }
 
     private val triedFallback = java.util.concurrent.ConcurrentHashMap.newKeySet<java.util.UUID>()
+    private val triedUiFallback = java.util.concurrent.ConcurrentHashMap.newKeySet<java.util.UUID>()
+
+    private fun uiEnabled() = plugin.config.getBoolean("text-animations", true)
+
+    /** The UI pack (animated ranks, names and tab), for everyone from the moment they join. */
+    fun sendUi(p: Player) {
+        if (!uiEnabled()) return
+        triedUiFallback.remove(p.uniqueId)
+        val url = url(p, ui = true) ?: return sendUiFallback(p)
+        p.addResourcePack(UI_PACK_ID, url, uiSha1, "TapX animates ranks, names and the tab list.", false)
+    }
+
+    private fun sendUiFallback(p: Player) {
+        val url = plugin.config.getString("ui-pack-fallback-url", DEFAULT_UI_FALLBACK)?.takeIf { it.isNotBlank() } ?: return
+        if (!triedUiFallback.add(p.uniqueId)) return
+        p.addResourcePack(UI_PACK_ID, url, null, "TapX animates ranks, names and the tab list.", false)
+    }
+
+    @org.bukkit.event.EventHandler
+    fun onJoin(e: org.bukkit.event.player.PlayerJoinEvent) {
+        val p = e.player
+        plugin.server.scheduler.runTaskLater(plugin, Runnable { if (p.isOnline) sendUi(p) }, 10L)
+    }
 
     fun send(p: Player) {
         if (!plugin.config.getBoolean("hide-crosshair", true)) return
@@ -67,8 +96,15 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
 
     @org.bukkit.event.EventHandler
     fun onStatus(e: org.bukkit.event.player.PlayerResourcePackStatusEvent) {
-        if (e.id != PACK_ID || !plugin.arcade.isPlaying(e.player)) return
         val p = e.player
+        if (e.id == UI_PACK_ID) {
+            if (e.status in setOf(org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD,
+                    org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.INVALID_URL,
+                    org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_RELOAD) && p.uniqueId !in triedUiFallback)
+                plugin.server.scheduler.runTaskLater(plugin, Runnable { if (p.isOnline) sendUiFallback(p) }, 10L)
+            return
+        }
+        if (e.id != PACK_ID || !plugin.arcade.isPlaying(e.player)) return
         when (e.status) {
             org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD,
             org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.INVALID_URL,
@@ -102,7 +138,7 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
             buf.release()
             val path = line.split(' ').getOrNull(1) ?: ""
             val ok = path.startsWith("/tapx/")
-            val body = if (ok) zip else "Not found".toByteArray()
+            val body = if (!ok) "Not found".toByteArray() else if (uiHash in path) uiZip else zip
             val head = "HTTP/1.1 ${if (ok) "200 OK" else "404 Not Found"}\r\n" +
                 "Content-Type: ${if (ok) "application/zip" else "text/plain"}\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
             ctx.writeAndFlush(Unpooled.wrappedBuffer(head.toByteArray(Charsets.US_ASCII), body)).addListener(ChannelFutureListener.CLOSE)
@@ -112,6 +148,17 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
     companion object Builder {
         /** The pack's bytes (deterministic: same plugin version, same bytes and hash). */
         fun buildZip(): ByteArray = build()
+
+        /** The UI pack: the animated text shader (see [TextFx]). */
+        fun buildUiZip(): ByteArray {
+            val out = ByteArrayOutputStream()
+            ZipOutputStream(out).use { z ->
+                fun put(name: String, bytes: ByteArray) { z.putNextEntry(ZipEntry(name).apply { time = 0 }); z.write(bytes); z.closeEntry() }
+                put("pack.mcmeta", """{"pack":{"description":"TapX animated ranks and tab","pack_format":75,"min_format":75,"max_format":99}}""".toByteArray())
+                put("assets/minecraft/shaders/core/rendertype_text.vsh", TextFx.vertexShader().toByteArray())
+            }
+            return out.toByteArray()
+        }
 
         private fun build(): ByteArray {
         val out = ByteArrayOutputStream()
@@ -141,6 +188,8 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
     }
 
         private val PACK_ID: UUID = UUID.fromString("7a9b3c1e-2f4d-4e6a-9b8c-0d1e2f3a4b5c")
+        private val UI_PACK_ID: UUID = UUID.fromString("7a9b3c1e-2f4d-4e6a-9b8c-0d1e2f3a4b5d")
+        const val DEFAULT_UI_FALLBACK = "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-ui-pack.zip"
         const val DEFAULT_FALLBACK = "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-screen-pack.zip"
     }
 }
