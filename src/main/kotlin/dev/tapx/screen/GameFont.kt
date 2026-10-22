@@ -12,24 +12,27 @@ import java.awt.geom.AffineTransform
 import java.awt.image.BufferedImage
 
 /**
- * The game's text: Lilita One (a bold, rounded display font, SIL Open Font License, bundled in the
- * jar) with a dark outline, a drop shadow and a slight top-to-bottom shine, like mobile game
- * labels. [HEIGHT] * scale is the height of capital letters; (x, y) is their top-left corner.
- * Each label is rendered once into a small image and reused.
+ * The game's text: Jersey 10 (a chunky pixel font, SIL Open Font License, bundled in the jar),
+ * drawn crisp on its pixel grid (one font pixel = [px] device pixels per scale step) with a
+ * one-pixel dark outline and a drop shadow, like pixel game UI kits. Colours are made vivid and
+ * snapped to map colours so text is solid on the map. [HEIGHT] * scale is roughly the height of
+ * capital letters; (x, y) is their top-left corner. Each label is rendered once and reused.
  */
 object GameFont {
     const val HEIGHT = 8
 
-    private val base: Font = GameFont::class.java.getResourceAsStream("/fonts/LilitaOne-Regular.ttf")!!.use {
+    private val base: Font = GameFont::class.java.getResourceAsStream("/fonts/Jersey10-Regular.ttf")!!.use {
         Font.createFont(Font.TRUETYPE_FONT, it)
     }
-    private val frc = FontRenderContext(null, true, true)
-    private val capRatio: Double = TextLayout("H", base.deriveFont(100f), frc).bounds.height / 100.0
+    private val frc = FontRenderContext(null, false, false)
     private val fonts = HashMap<Int, Font>()
 
-    /** The font at [scale], in device pixels (Res.k per layout unit). */
+    /** Device pixels per font pixel at [scale] (Jersey 10 is drawn on a 10-pixel em). */
+    private fun px(scale: Int) = maxOf(1, Math.round(1.5 * Res.k * scale).toInt())
+
+    /** The font at [scale], in device pixels: a whole number of device pixels per font pixel, so it stays crisp. */
     private fun font(scale: Int): Font = synchronized(fonts) {
-        fonts.getOrPut(scale * 100 + Res.k) { base.deriveFont((HEIGHT * scale * Res.k / capRatio).toFloat()) }
+        fonts.getOrPut(scale * 100 + Res.k) { base.deriveFont((10 * px(scale)).toFloat()) }
     }
 
     private fun clean(text: String): String {
@@ -70,8 +73,8 @@ object GameFont {
             val text = clean(raw)
             val f = font(scale)
             val layout = TextLayout(text, f, frc)
-            val ow = if (outline != null) (0.9f + scale * 0.5f) * k else 0f
-            val padU = units(ow + 2.0 * k)
+            val p = px(scale)
+            val padU = units(p * 3.0)
             val pad = padU * k
             val baseU = padU + units(layout.ascent.toDouble())
             val capU = HEIGHT * scale
@@ -79,19 +82,22 @@ object GameFont {
             val h = (baseU + units(layout.descent.toDouble()) + padU + 1) * k
             val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
             val g = img.createGraphics()
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF)
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF)
             val shape = layout.getOutline(AffineTransform.getTranslateInstance(pad.toDouble(), (baseU * k).toDouble()))
-            val drop = AffineTransform.getTranslateInstance(0.0, (0.8 + scale * 0.4) * k).createTransformedShape(shape)
+            fun at(dx: Int, dy: Int) = AffineTransform.getTranslateInstance(dx.toDouble(), dy.toDouble()).createTransformedShape(shape)
             if (outline != null) {
-                g.stroke = BasicStroke(ow * 2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-                g.color = Color(0, 0, 0, 110); g.draw(drop)
-                g.color = outline; g.draw(shape)
+                val ink = Color(Palette.snap(outline.rgb and 0xffffff))
+                g.color = ink
+                // letters are only one font pixel apart, so the outline is a third of a font pixel
+                // (keeps gaps and holes open) plus a full one-pixel drop shadow
+                val o = maxOf(1, p / 3)
+                g.fill(at(0, p + o)); g.fill(at(o, p + o)); g.fill(at(-o, p + o))
+                for (dx in -1..1) for (dy in -1..1) if (dx != 0 || dy != 0) g.fill(at(dx * o, dy * o))
             } else {
-                g.color = Color(0, 0, 0, 120); g.fill(drop)
+                g.color = Color(0, 0, 0, 140); g.fill(at(0, p))
             }
-            val top = ((baseU - capU) * k).toFloat()
-            g.paint = GradientPaint(0f, top, color.shade(0.28), 0f, top + capU * k, color)
+            g.color = PixelArt.vivid(color)
             g.fill(shape)
             g.dispose()
             // (x, y) is the top-left of the capitals, in layout units

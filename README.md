@@ -237,7 +237,8 @@ mineflayer bot that plays on a local server and rebuilds the screen from the pac
 | `screen/Art.kt` | Procedural art (characters, monster generator, pets, backgrounds, icons) |
 | `screen/MapScreen.kt` | The per-player wall of fake item frames and partial map updates |
 | `screen/Palette.kt` | RGB → map colour lookup table |
-| `screen/GameFont.kt` | Game text: Lilita One with outline, shadow and shine (bundled, SIL OFL; see `resources/fonts`) |
+| `screen/GameFont.kt` | Game text: Jersey 10 pixel font, crisp on its pixel grid, with outline and shadow (bundled, SIL OFL; see `resources/fonts`) |
+| `screen/PixelArt.kt` | Turns the drawn art into chunky pixel art: blocks, dark outline, vivid colours snapped to exact map colours |
 | `screen/Widgets.kt` | Glossy buttons, panels, cards, ribbons and tabs (drawn once, cached) |
 
 `web/` holds the original browser prototype, kept for reference.

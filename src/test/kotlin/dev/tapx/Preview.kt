@@ -89,6 +89,10 @@ fun main(args: Array<String>) {
     data.stage = 25; data.farming = false; data.wave = WAVES; game.monster = null; step(8); shot("titan-lord")
     data.stage = 65; data.wave = 2; game.monster = null; step(8); shot("ocean")
     data.stage = 75; game.monster = null; step(8); shot("sky")
+    repeat(3) { screen.input(false, false, false, false, false, true, false, false); step(1) } // close any popup
+    data.freeChestAt = Long.MAX_VALUE
+    data.stage = 12; data.farming = false; data.wave = 3; game.monster = null; step(12); shot("monster")
+    data.stage = 30; data.wave = WAVES; game.monster = null; step(12); shot("monster-boss")
     screen.calibrate(); step(1); shot("calibrate")
     screen.input(false, false, false, false, false, true, false, false); step(1)
     // Which pixels change between idle frames? (red = changed) -> bandwidth hot spots

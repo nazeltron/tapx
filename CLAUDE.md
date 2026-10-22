@@ -14,9 +14,12 @@ hiRes()/blit(). Only changed pixels are converted (Palette.convertChanged) and o
 the right panel is re-rendered only on input / every 4th frame.
 Server features: ChatTools (ChatFilter, ChatGames, Welcome, /payment + /flashsale), Warns (/warn ladders), ServerEvents (/event), StoreTools (flash sale, payments/piggy bank, promo codes), Essentials,
 TabList (+chat), Discord (DiscordSRV via reflection), SetStat (/tapx set), Cmds (code-registered commands).
-Look: polished mobile-game style (not pixel art): anti-aliased Java2D with gradients, Lilita One font
-(GameFont), glossy cached widgets (Widgets), ordered two-colour dithering to map colours (Palette).
-Rendering budget: `./gradlew preview` prints the frame cost (~7 ms render + ~2 ms palette). Characters
+Look: chunky pixel art (since 4.0, at the user's request): art is still drawn with Java2D, then PixelArt
+turns each cached sprite into pixel art (1-unit blocks, dark outline, colours made vivid and snapped to exact
+map colours so they're solid on the map); monsters are drawn at 8 fps straight at block resolution
+(PixelArt.render). Widgets are pixel UI-kit style (stepped corners, black outline, light top row, darker lip);
+text is Jersey 10 (GameFont) drawn crisp on its pixel grid. Ordered dithering (Palette) is left for the rest.
+Rendering budget: `./gradlew preview` prints the frame cost (~19 ms render + ~3 ms palette). Characters
 (per quantised pose), pets, icons, coins, portraits, widgets and text are cached sprites; only visible
 list rows are drawn. Gems are the paid currency (`/tapx gems ...` for the
 web store). `web/` is the old

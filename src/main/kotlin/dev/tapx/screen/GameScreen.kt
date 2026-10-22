@@ -704,21 +704,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
         // HP bar
         val bw = 300.0; val bh = 20.0; val bx = BW / 2.0 - bw / 2; val by = 46.0
-        gfx.fill(rrect(bx - 2, by - 2, bw + 4, bh + 4, 10.0), hex("0e1020"))
-        gfx.fill(rrect(bx, by, bw, bh, 8.0), hex("2a1a24"))
+        val hpF = if (m != null) clamp(m.hp / m.maxHp, 0.0, 1.0) else 0.0
+        gfx.blit(Widgets.meter((bw + 4).toInt(), (bh + 4).toInt(), if (m?.boss == true) hex("e8342a") else hex("f2662a"), hpF), (bx - 2).toInt(), (by - 2).toInt())
         if (m != null) {
-            val f = clamp(m.hp / m.maxHp, 0.0, 1.0)
-            if (f > 0) gfx.save {
-                val c = if (m.boss) hex("e8342a") else hex("f2662a")
-                paint = GradientPaint(0f, by.toFloat(), c.shade(0.35), 0f, (by + bh).toFloat(), c.shade(-0.25))
-                fill(rrect(bx, by, max(bh, bw * f), bh, 8.0))
-                if (bw * f > 12) fill(rrect(bx + 4, by + 2, bw * f - 8, 6.0, 3.0), Color(255, 255, 255, 70))
-            }
             if (m.boss) Art.skull(gfx, bx - 6, by + bh / 2, 11.0)
             text(fit(m.name, 170), (bx + 14).toInt(), (by + 6).toInt(), Color.WHITE)
             text("${fmt(ceil(m.hp))} HP", (bx + bw - 8).toInt(), (by + 6).toInt(), Color.WHITE, 1, 2)
         }
-        gfx.stroke = stroke(1.2f); gfx.color = Color(255, 255, 255, 60); gfx.draw(rrect(bx, by, bw, bh, 8.0))
 
         // server event (ADMIN ABUSE) banner, colour-cycling
         dev.tapx.ServerEvents.label()?.let { label ->
@@ -735,11 +727,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
         // spell bar along the bottom, with the mana bar above it
         val sx0 = (BW - SKILLS.size * 40 + 4) / 2
         val mx = sx0.toDouble(); val my = 424.0; val mw = SKILLS.size * 40 - 4.0
-        gfx.fill(rrect(mx - 2, my - 2, mw + 4, 14.0, 7.0), hex("0e1020"))
-        gfx.save {
-            paint = GradientPaint(0f, my.toFloat(), hex("9ad8ff"), 0f, (my + 10).toFloat(), hex("2a6ad0"))
-            fill(rrect(mx, my, max(10.0, mw * (d.mana / g.maxMana())), 10.0, 5.0))
-        }
+        gfx.blit(Widgets.meter((mw + 4).toInt(), 14, hex("3aa0ff"), d.mana / g.maxMana()), (mx - 2).toInt(), (my - 2).toInt())
         text("MANA ${floor(d.mana).toInt()}/${g.maxMana()}", BW / 2, my.toInt() + 1, Color.WHITE, 1, 1)
         SKILLS.forEachIndexed { i, sk -> skillButton(sk, sx0 + i * 40, 442) }
 

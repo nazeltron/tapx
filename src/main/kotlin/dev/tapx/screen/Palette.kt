@@ -16,6 +16,8 @@ object Palette {
     private val other = ByteArray(N * N * N)
     private val mix = ByteArray(N * N * N) // 0..16: how many of 16 pattern cells get [other]
     private val BAYER = intArrayOf(0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)
+    /** RGB of each map colour id. */
+    private val rgbOf = IntArray(256)
 
     init {
         val ids = ArrayList<Byte>()
@@ -28,6 +30,7 @@ object Palette {
             }
         }
         val n = ids.size
+        for (i in 0 until n) rgbOf[ids[i].toInt() and 255] = rgbs[i]
         val pr = DoubleArray(n) { ((rgbs[it] shr 16) and 255).toDouble() }
         val pg = DoubleArray(n) { ((rgbs[it] shr 8) and 255).toDouble() }
         val pb = DoubleArray(n) { (rgbs[it] and 255).toDouble() }
@@ -65,6 +68,9 @@ object Palette {
 
     /** The single closest map colour. */
     fun toMap(rgb: Int): Byte = near[key(rgb)]
+
+    /** [rgb] snapped to the closest colour a map can show exactly (so it is drawn solid, not dithered). */
+    fun snap(rgb: Int): Int = rgbOf[near[key(rgb)].toInt() and 255]
 
     /**
      * Like [convert], but only for pixels that differ from [prev] (which is updated). Marks the

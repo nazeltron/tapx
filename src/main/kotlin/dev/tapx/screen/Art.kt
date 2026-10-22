@@ -210,8 +210,9 @@ object Art {
         val atk = if (p.atk == 0) 0.0 else (p.atk - 0.5) / 6.0
         drawChibiNow(g, p.look, p.bob.toDouble(), p.cape * 2.8, p.swing * 1.5, atk)
         g.dispose()
-        synchronized(chibiCache) { chibiCache[p] = img }
-        return img
+        val px = PixelArt.pixelize(img, Res.k)
+        synchronized(chibiCache) { chibiCache[p] = px }
+        return px
     }
 
     /** The full character in local units, feet at (0, 0). */
@@ -384,7 +385,36 @@ object Art {
     /** Total drawn height above the ground, for HUD placement. */
     fun monsterHeight(sp: MonsterSpec) = if (sp.mimic) 120.0 else sp.h * (if (sp.lord) 1.4 else if (sp.boss) 1.22 else 1.0) + (if (sp.legs) 16 else 0) + (if (sp.float) 24 else 0)
 
+    private data class MonsterKey(val sp: Int, val t: Int, val hit: Int, val death: Int, val age: Int, val scale: Int)
+    private val monsterCache = object : java.util.LinkedHashMap<MonsterKey, Pair<BufferedImage, Pair<Double, Double>>>(64, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<MonsterKey, Pair<BufferedImage, Pair<Double, Double>>>) = size > 96
+    }
+
+    /**
+     * A monster as pixel art: drawn at 8 animation frames a second (the usual pixel-art pace), each
+     * frame pixelised once and reused.
+     */
     fun drawMonster(g: Graphics2D, sp: MonsterSpec, x: Double, gy: Double, t: Double, hitT: Double, deathT: Double, age: Double, scaleAll: Double) {
+        val tq = Math.floor(t * 8).toInt()
+        val hq = Math.round(hitT * 5).toInt(); val dq = Math.round(deathT * 8).toInt(); val aq = Math.round(clamp(age, 0.0, 0.3) * 20).toInt()
+        val key = MonsterKey(System.identityHashCode(sp), tq, hq, dq, aq, Math.round(scaleAll * 100).toInt())
+        val hit = synchronized(monsterCache) { monsterCache[key] }
+        val (img, origin) = hit ?: run {
+            val s = scaleAll * (if (sp.lord) 1.4 else if (sp.boss) 1.22 else 1.0)
+            val w = Math.ceil((sp.w * 1.8 + 80) * s).toInt(); val h = Math.ceil((monsterHeight(sp) * 1.35 + 70) * s).toInt()
+            val ox = Math.round(w / 2.0 / 2) * 2.0; val oy = Math.round((h - 24 * s) / 2) * 2.0
+            val img = PixelArt.render(w, h, 1) { rg ->
+                drawMonsterNow(rg, sp, ox, oy, tq / 8.0, hq / 5.0, dq / 8.0, aq / 20.0 + (if (age > 0.3) 1.0 else 0.0), scaleAll)
+            }
+            val made = img to (ox to oy)
+            synchronized(monsterCache) { monsterCache[key] = made }
+            made
+        }
+        // one image pixel per layout unit; nearest-neighbour scaling keeps the blocks sharp
+        g.drawImage(img, Math.round(x - origin.first).toInt(), Math.round(gy - origin.second).toInt(), img.width, img.height, null)
+    }
+
+    private fun drawMonsterNow(g: Graphics2D, sp: MonsterSpec, x: Double, gy: Double, t: Double, hitT: Double, deathT: Double, age: Double, scaleAll: Double) {
         val spawn = clamp(age * 4, 0.0, 1.0)
         if (sp.mimic) return drawMimic(g, x, gy, t, hitT, deathT, spawn, scaleAll)
         val scale = (if (sp.lord) 1.4 else if (sp.boss) 1.22 else 1.0) * (1 - deathT * 0.6) * (0.4 + 0.6 * spawn) * scaleAll
@@ -766,7 +796,7 @@ object Art {
             g.fill(circle(fx, gy - 8, 2.5), c); g.fill(circle(fx, gy - 8, 1.0), hex("fff2a0"))
         }
         g.dispose()
-        return img
+        return PixelArt.pixelize(img, 2 * Res.k, outline = false)
     }
 
     /** Animated bits over the background (clouds, snow, embers, fireflies). */
@@ -909,8 +939,10 @@ object Art {
         g.translate(4, 4)
         draw(g)
         g.dispose()
-        synchronized(spriteCache) { spriteCache[k] = img }
-        return img
+        // small pictures get smaller blocks so they keep their details
+        val px = PixelArt.pixelize(img, Res.k)
+        synchronized(spriteCache) { spriteCache[k] = px }
+        return px
     }
 
 

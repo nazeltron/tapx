@@ -69,3 +69,7 @@ tasks.register<JavaExec>("dumpMapColors") {
 
 // src/test only holds dev tools (preview, colour dump), not unit tests.
 tasks.test { failOnNoDiscoveredTests.set(false) }
+tasks.register<JavaExec>("fontCheck") {
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.tapx.FontCheckKt")
+}
