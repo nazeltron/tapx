@@ -1550,19 +1550,26 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 }
 
 /** Cursor sprite size in device pixels. */
-val CURSOR_W: Int get() = 15 * Res.k
-val CURSOR_H: Int get() = 21 * Res.k
-/** The arrow cursor, drawn once: a white arrow with a solid black border (visible on any colour). */
+val CURSOR_W: Int get() = 19 * Res.k
+val CURSOR_H: Int get() = 27 * Res.k
+/** The arrow cursor, drawn once: a bright yellow arrow with a white edge highlight and a solid black border. */
 private val cursorImage: BufferedImage by lazy {
     val img = BufferedImage(CURSOR_W, CURSOR_H, BufferedImage.TYPE_INT_ARGB)
     val g = img.createGraphics()
     g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
     g.scale(Res.k.toDouble(), Res.k.toDouble())
     g.translate(1.0, 1.0)
-    g.color = java.awt.Color.WHITE
-    g.fill(java.awt.geom.Path2D.Double().apply {
+    g.scale(1.35, 1.35)
+    val arrow = java.awt.geom.Path2D.Double().apply {
         moveTo(0.0, 0.0); lineTo(0.0, 15.0); lineTo(4.0, 11.5); lineTo(7.0, 17.5); lineTo(9.5, 16.5); lineTo(7.0, 10.5); lineTo(11.5, 10.5); closePath()
-    })
+    }
+    g.color = java.awt.Color(0xfaee4d) // an exact map colour (GOLD), so it stays a clean yellow
+    g.fill(arrow)
+    // a white highlight down the left edge, for a glossy look
+    g.clip(arrow)
+    g.color = java.awt.Color.WHITE
+    g.fill(java.awt.geom.Rectangle2D.Double(0.0, 0.0, 1.6, 14.0))
+    g.fill(java.awt.geom.Path2D.Double().apply { moveTo(0.0, 0.0); lineTo(5.0, 5.0); lineTo(3.6, 5.0); lineTo(0.0, 1.4); closePath() })
     g.dispose()
     // every empty pixel touching the arrow becomes the border
     val fill = Array(CURSOR_H) { y -> BooleanArray(CURSOR_W) { x -> (img.getRGB(x, y) ushr 24) >= 128 } }

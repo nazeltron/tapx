@@ -39,6 +39,7 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
         plugin.dataFolder.mkdirs()
         plugin.dataFolder.resolve("tapx-screen-pack.zip").writeBytes(zip)
         plugin.dataFolder.resolve("tapx-ui-pack.zip").writeBytes(uiZip)
+        checkGithub()
         if (!plugin.config.getBoolean("hide-crosshair", true) && !uiEnabled()) return
         ChannelInitializeListenerHolder.addListener(listenerKey) { ch -> ch.pipeline().addFirst("tapx_http", HttpSniffer()) }
     }
@@ -47,32 +48,65 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
         if (ChannelInitializeListenerHolder.hasListener(listenerKey)) ChannelInitializeListenerHolder.removeListener(listenerKey)
     }
 
-    private fun url(p: Player, ui: Boolean = false): String? {
-        plugin.config.getString(if (ui) "ui-pack-url" else "resource-pack-url", "")?.takeIf { it.isNotBlank() }?.let { return it }
+    /** The game-port link (served by [HttpSniffer]); null if the player's address is unknown. */
+    private fun portUrl(p: Player, ui: Boolean): String? {
         val host = p.virtualHost ?: return null
         val name = host.hostString.trimEnd('.').ifBlank { return null }
         val port = if (host.port > 0) host.port else Bukkit.getPort()
         return "http://${if (':' in name) "[$name]" else name}:$port/tapx/${if (ui) uiHash else hash}.zip"
     }
 
-    private val triedFallback = java.util.concurrent.ConcurrentHashMap.newKeySet<java.util.UUID>()
-    private val triedUiFallback = java.util.concurrent.ConcurrentHashMap.newKeySet<java.util.UUID>()
+    private fun githubUrl(ui: Boolean) =
+        plugin.config.getString(if (ui) "ui-pack-fallback-url" else "resource-pack-fallback-url", if (ui) DEFAULT_UI_FALLBACK else DEFAULT_FALLBACK)!!.takeIf { it.isNotBlank() }
+
+    /** Set at startup when the public (GitHub) copy is byte-for-byte this build's pack: then it's the main link. */
+    @Volatile private var githubOk = false
+    @Volatile private var githubUiOk = false
+
+    /** Download the public copies once and compare them with this build's packs. */
+    private fun checkGithub() = plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
+        fun same(url: String?, want: String) = url != null && runCatching {
+            val c = java.net.URI(url).toURL().openConnection().apply { connectTimeout = 8000; readTimeout = 15000 }
+            val got = MessageDigest.getInstance("SHA-1").digest(c.getInputStream().use { it.readBytes() }).joinToString("") { "%02x".format(it) }
+            got == want
+        }.getOrDefault(false)
+        githubOk = same(githubUrl(false), hash)
+        githubUiOk = same(githubUrl(true), uiHash)
+        plugin.logger.info("Resource packs: public copies ${if (githubOk && githubUiOk) "match this build, using them as the main download" else "don't match this build (screen ${githubOk}, ui ${githubUiOk}); using the game port first"}.")
+    })
+
+    /** Links to try, in order: config override, then the verified public copy or the game port, then the other one. */
+    private fun links(p: Player, ui: Boolean): List<Pair<String, ByteArray?>> {
+        val sha = if (ui) uiSha1 else sha1
+        plugin.config.getString(if (ui) "ui-pack-url" else "resource-pack-url", "")?.takeIf { it.isNotBlank() }?.let { return listOf(it to null) }
+        val gh = githubUrl(ui)
+        val port = portUrl(p, ui)
+        val ok = if (ui) githubUiOk else githubOk
+        return buildList {
+            if (ok && gh != null) add(gh to sha)
+            if (port != null) add(port to sha)
+            if (!ok && gh != null) add(gh to null) // unverified copy: no hash check
+        }
+    }
+
+    /** Which link each player is on, per pack (index into [links]). */
+    private val attempt = java.util.concurrent.ConcurrentHashMap<Pair<UUID, Boolean>, Int>()
 
     private fun uiEnabled() = plugin.config.getBoolean("text-animations", true)
 
-    /** The UI pack (animated ranks, names and tab), for everyone from the moment they join. */
-    fun sendUi(p: Player) {
-        if (!uiEnabled()) return
-        triedUiFallback.remove(p.uniqueId)
-        val url = url(p, ui = true) ?: return sendUiFallback(p)
-        p.addResourcePack(UI_PACK_ID, url, uiSha1, "TapX animates ranks, names and the tab list.", false)
+    private fun offer(p: Player, ui: Boolean, index: Int): Boolean {
+        val l = links(p, ui).getOrNull(index) ?: return false
+        attempt[p.uniqueId to ui] = index
+        p.addResourcePack(if (ui) UI_PACK_ID else PACK_ID, l.first, l.second,
+            if (ui) "TapX animates ranks, names and the tab list." else "TapX hides the crosshair while you play.", false)
+        return true
     }
 
-    private fun sendUiFallback(p: Player) {
-        val url = plugin.config.getString("ui-pack-fallback-url", DEFAULT_UI_FALLBACK)?.takeIf { it.isNotBlank() } ?: return
-        if (!triedUiFallback.add(p.uniqueId)) return
-        p.addResourcePack(UI_PACK_ID, url, null, "TapX animates ranks, names and the tab list.", false)
-    }
+    /** The UI pack (animated ranks, names and tab), for everyone from the moment they join. */
+    fun sendUi(p: Player) { if (uiEnabled()) offer(p, true, 0) }
+
+    /** The screen pack (no crosshair / XP bar), while on the game screen. */
+    fun send(p: Player) { if (plugin.config.getBoolean("hide-crosshair", true)) offer(p, false, 0) }
 
     @org.bukkit.event.EventHandler
     fun onJoin(e: org.bukkit.event.player.PlayerJoinEvent) {
@@ -80,42 +114,27 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
         plugin.server.scheduler.runTaskLater(plugin, Runnable { if (p.isOnline) sendUi(p) }, 10L)
     }
 
-    fun send(p: Player) {
-        if (!plugin.config.getBoolean("hide-crosshair", true)) return
-        triedFallback.remove(p.uniqueId)
-        val url = url(p) ?: return sendFallback(p)
-        p.addResourcePack(PACK_ID, url, sha1, "TapX hides the crosshair while you play.", false)
-    }
-
-    /** Second try from a public copy (GitHub by default), for hosts where the game port can't serve it. */
-    private fun sendFallback(p: Player) {
-        val url = plugin.config.getString("resource-pack-fallback-url", DEFAULT_FALLBACK)?.takeIf { it.isNotBlank() } ?: return
-        if (!triedFallback.add(p.uniqueId)) return
-        p.addResourcePack(PACK_ID, url, null, "TapX hides the crosshair while you play.", false)
-    }
-
     @org.bukkit.event.EventHandler
     fun onStatus(e: org.bukkit.event.player.PlayerResourcePackStatusEvent) {
         val p = e.player
-        if (e.id == UI_PACK_ID) {
-            if (e.status in setOf(org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD,
-                    org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.INVALID_URL,
-                    org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_RELOAD) && p.uniqueId !in triedUiFallback)
-                plugin.server.scheduler.runTaskLater(plugin, Runnable { if (p.isOnline) sendUiFallback(p) }, 10L)
-            return
-        }
-        if (e.id != PACK_ID || !plugin.arcade.isPlaying(e.player)) return
+        val ui = when (e.id) { UI_PACK_ID -> true; PACK_ID -> false; else -> return }
+        val which = if (ui) "UI pack" else "screen pack"
+        val idx = attempt[p.uniqueId to ui] ?: 0
+        val link = links(p, ui).getOrNull(idx)?.first ?: "?"
+        plugin.logger.info("${p.name}: $which ${e.status} ($link)")
+        if (!ui && !plugin.arcade.isPlaying(p)) return
         when (e.status) {
             org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD,
             org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.INVALID_URL,
-            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_RELOAD -> {
-                if (p.uniqueId !in triedFallback) {
-                    plugin.logger.info("${p.name} couldn't download the screen pack from this server (${e.status}); trying the backup link.")
-                    plugin.server.scheduler.runTaskLater(plugin, Runnable { if (p.isOnline) sendFallback(p) }, 10L)
-                } else plugin.logger.warning("${p.name} couldn't load the screen pack (${e.status}). Set resource-pack-url in the TapX config.")
+            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.FAILED_RELOAD,
+            org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.DISCARDED -> {
+                plugin.server.scheduler.runTaskLater(plugin, Runnable {
+                    if (!p.isOnline) return@Runnable
+                    if (!offer(p, ui, idx + 1)) plugin.logger.warning("${p.name} couldn't load the TapX $which from any link. Check that the client allows server resource packs, or set ${if (ui) "ui-pack-url" else "resource-pack-url"}.")
+                }, 10L)
             }
             org.bukkit.event.player.PlayerResourcePackStatusEvent.Status.DECLINED ->
-                p.sendMessage(mm("<gray>Tip: accept the <white>TapX resource pack</white> to hide the crosshair (Multiplayer → Edit server → Server Resource Packs: <green>Enabled</green>)."))
+                p.sendMessage(mm("<gray>Tip: accept the <white>TapX resource packs</white> for animated ranks and a clean game screen (Multiplayer → Edit server → Server Resource Packs: <green>Enabled</green>)."))
             else -> {}
         }
     }
