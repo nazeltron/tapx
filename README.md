@@ -137,7 +137,8 @@ bottom), a gentle breathing glow and a soft shine sweeping across; OWNER, ELITE,
 slowly fade through their theme colours, LEGEND through a pastel rainbow. Nothing moves or wiggles. Names get a softer
 version of their rank's style. It works everywhere text is drawn (tab, chat, /list). The styles live in `TextFx.kt`,
 which also generates the shader. Without the pack players see the same colours, just not animated.
-`text-animations: false` turns it off.
+`text-animations: false` turns it off. Both packs are sent as required (`force-resource-packs: true`), so players
+joining through Minehut (whose server-list entry has server packs off) still get the prompt; declining disconnects them.
 
 **Tab list and chat** - DrillSim-style tab: every online player (also those on the game screen) as
 `RANK Name ✦best-stage [prestiges]`, sorted staff > rank > stage; header with the title, season and any running

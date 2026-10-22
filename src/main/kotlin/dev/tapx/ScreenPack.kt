@@ -97,8 +97,13 @@ class ScreenPack(private val plugin: TapXPlugin) : org.bukkit.event.Listener {
     private fun offer(p: Player, ui: Boolean, index: Int): Boolean {
         val l = links(p, ui).getOrNull(index) ?: return false
         attempt[p.uniqueId to ui] = index
-        p.addResourcePack(if (ui) UI_PACK_ID else PACK_ID, l.first, l.second,
-            if (ui) "TapX animates ranks, names and the tab list." else "TapX hides the crosshair while you play.", false)
+        // "required" makes the client show the pack prompt even when its server entry (e.g. Minehut's)
+        // has server resource packs disabled; declining a required pack disconnects the player
+        val force = plugin.config.getBoolean("force-resource-packs", true)
+        val info = net.kyori.adventure.resource.ResourcePackInfo.resourcePackInfo(if (ui) UI_PACK_ID else PACK_ID, java.net.URI(l.first),
+            l.second?.joinToString("") { "%02x".format(it) } ?: "")
+        p.sendResourcePacks(net.kyori.adventure.resource.ResourcePackRequest.resourcePackRequest().packs(info).replace(false).required(force).prompt(mm(if (ui) "<gold><b>TapX</b></gold> <white>needs a tiny resource pack for the game screen, animated ranks and the tab list.<newline><gray>It's very small and is removed when you leave."
+            else "<gold><b>TapX</b></gold> <white>needs a tiny resource pack for the game screen.")).build())
         return true
     }
 

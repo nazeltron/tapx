@@ -45,6 +45,9 @@ resource-pack-url: ""
 # Animated rank tags, names and tab list (in tab and chat) through a second tiny resource pack that every
 # player gets on join (a text shader). Players without it just see the normal colours.
 text-animations: true
+# Make the packs required: players joining through Minehut (or with server packs turned off) still get
+# the pack prompt, and declining it disconnects them. false = optional packs.
+force-resource-packs: true
 # Optional: host the UI pack elsewhere (the file is saved as plugins/TapX/tapx-ui-pack.zip).
 ui-pack-url: ""
 ui-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-ui-pack.zip"
