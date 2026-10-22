@@ -63,7 +63,7 @@ object Discord : Listener {
         }.getOrDefault(true)
     }
 
-    fun invite(): String = (if (::plugin.isInitialized) plugin.config.getString("discord.invite", "")!! else "").ifBlank { DEFAULT_INVITE }
+    fun invite(): String = Cmds.validUrl(if (::plugin.isInitialized) plugin.config.getString("discord.invite", "")!! else "", DEFAULT_INVITE)
     const val DEFAULT_INVITE = "https://discord.gg/drillnetwork"
     private fun bot() = plugin.config.getString("discord.bot-name", "DrillSim")!!
 

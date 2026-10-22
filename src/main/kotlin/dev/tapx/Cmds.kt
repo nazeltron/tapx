@@ -22,7 +22,13 @@ object Cmds {
     lateinit var plugin: TapXPlugin
 
     /** The web store address (config store-url). */
-    fun storeUrl(): String = if (::plugin.isInitialized) plugin.config.getString("store-url", "")!!.ifBlank { DEFAULT_STORE } else DEFAULT_STORE
+    fun storeUrl(): String = validUrl(if (::plugin.isInitialized) plugin.config.getString("store-url", "")!! else "", DEFAULT_STORE)
+
+    /** [url] if it's a real web link, else [fallback] (a click link with spaces in it breaks the chat packet). */
+    fun validUrl(url: String, fallback: String): String {
+        val u = url.trim()
+        return if (Regex("^https?://[^\\s'<>]+$").matches(u) && runCatching { java.net.URI(u).host != null }.getOrDefault(false)) u else fallback
+    }
     const val DEFAULT_STORE = "https://tapx.paynow.store"
 
     class Ctx(val sender: CommandSender, val args: List<String>) {

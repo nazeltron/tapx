@@ -56,6 +56,8 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
 
     override fun onEnable() {
         saveDefaultConfig()
+        val maxMb = Runtime.getRuntime().maxMemory() / (1024 * 1024)
+        logger.info("Server memory (max heap): $maxMb MB" + if (maxMb < 1500) " - low; each player's screen uses ~20 MB" else "")
         playersDir = File(dataFolder, "players").apply { mkdirs() }
         pendingFile = File(dataFolder, "pending-gems.yml")
         YamlConfiguration.loadConfiguration(pendingFile).let { y -> y.getKeys(false).forEach { pendingGems[it] = y.getLong(it) } }
