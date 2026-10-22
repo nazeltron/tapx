@@ -77,3 +77,35 @@ chat:
 commands:
   # TapX commands replace vanilla ones (/msg, /tp ...). Set true to also replace other plugins' (EssentialsX).
   override-plugins: false
+
+# --- Chat (3.4) ---
+chat-filter:
+  enabled: true
+  # Blocked as whole words (also with s/es/er/ing/ed/y), with leetspeak, repeated letters and "f u c k" spacing undone.
+  # Add more in game: /chatfilter add <word>  (or addstrict for words blocked even inside other words)
+  words: [fuck, fuk, fuc, shit, bitch, cunt, dick, pussy, cock, whore, slut, bastard, asshole, ass, retard, retarded, nigga, nigger, faggot, fag, kys, porn, penis, vagina, rape, rapist]
+  strict-words: [nigger, nigga, faggot, fuck]
+  # Links and IP addresses to other servers are blocked (except these, the Discord invite and the store).
+  block-links: true
+  allowed-links: []
+  # Seconds between messages (/chatdelay); mods and up skip this and the spam checks.
+  delay-seconds: 2
+  # How many times the same message may be sent within a minute.
+  max-repeats: 1
+  # Messages with more than this % capital letters (6+ letters) are lowercased.
+  caps-percent: 60
+chat-games:
+  # A random chat game every N minutes when at least min-players are online (0 = only /chatgame).
+  interval-minutes: 8
+  min-players: 2
+  reward-gems: 1
+  # Gold reward, in monster kills' worth at the winner's stage.
+  reward-gold-kills: 25
+welcome:
+  enabled: true
+  line: "Tap titans, hire allies and climb the stages!"
+  # Your server address, shown in the welcome message (blank = hidden).
+  address: ""
+warns:
+  # Active warns expire after this many days (the history is kept).
+  expire-days: 30

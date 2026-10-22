@@ -136,6 +136,23 @@ When the piggy bank fills (default $100 of purchases) everyone gets a 2x EVERYTH
 event; footer with ONLINE / TPS / PING and the Discord invite (`tab.header`, `tab.season`, `tab.address`). Chat uses the
 same tags plus a stats card on hover. Default Discord invite: discord.gg/drillnetwork.
 
+**Chat (ported from DrillSim)**
+- **Welcome message**: the player's face drawn in chat next to WELCOME (BACK) to TAPX and clickable Discord/store links (`welcome.*`).
+- **Chat filter**: blocked words (leetspeak, repeated letters and "f u c k" spacing caught; `/chatfilter add|addstrict|remove|list`),
+  links/IPs to other servers, chat delay (`/chatdelay <seconds|off>`, default 2s), repeated messages, excessive caps
+  (lowercased), letter spam (shortened). Blocked messages show staff an ALERT. Mentioning a player's name pings them.
+  Mods and up (or `tapx.chat.bypass`) skip the spam checks, never the word filter.
+- **Chat games**: `/chatgame math|type|unscramble|number|missingletters|trivia` (trivia: `list`, `custom <q> | <a>`),
+  `/stopchatgame`; a random one every 8 minutes with 2+ players online. Winner gets gems + gold (`chat-games.*`).
+- **Warnings**: `/warn <player>` (clickable reason list) or `/warn <player> <reason> [note]`, `/warnreasons`, `/warns`,
+  `/mywarns`, `/unwarn <player> <reason>` (mod+), `/clearwarns <player>` (admin+), `/warnhistory <player> [page]`.
+  Each reason has a punishment ladder (chat rules: verbal → mute 3h → 6h → 12h → 24h → permanent; racism/homophobia:
+  permanent mute; cheating/macros/boosting: bans; botting: IP ban; manual reasons are just logged). Warns expire after
+  30 days (history kept). Staff level comes from the staff rank (`/rank set <player> helper|mod|admin|owner`), ops, or
+  `tapx.staff.helper/mod/admin`. Offline players see their warning when they join.
+- **Store**: `/payment <player> <usd> [package]` (thank-you message, jingle, GG reward, fills the piggy bank) and
+  `/flashsale <percent> <duration>` (e.g. `30 2h`) / `/flashsale stop` for your web store's console commands.
+
 **Ranks and gamepasses (admin)**
 
 | Command | What it does |

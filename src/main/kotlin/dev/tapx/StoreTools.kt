@@ -71,19 +71,42 @@ object Payments : Listener {
     private fun save() { val y = YamlConfiguration(); y.set("usd", piggy); y.save(File(plugin.dataFolder, "piggy.yml")) }
 
     fun payment(name: String, usd: Double, pkg: String) {
+        val price = if (usd % 1.0 == 0.0) "%.0f".format(usd) else "%.2f".format(usd)
         val lines = listOf(
+            "<gradient:#ffcf3a:#ff7a3a:#ff5a8a><st>                                                  </st></gradient>",
             "",
-            "<gradient:#ffcf3a:#ff5a8a><b>THANK YOU!</b></gradient>",
-            "<white>$name <gray>just supported the server!",
-            "<gray>Package: <aqua>${pkg.ifBlank { "Store purchase" }}",
-            "<yellow>Type <b>GG</b> in chat in the next 10 seconds for free gold!",
+            "<white>Thank you <light_purple><b>$name</b></light_purple> <white>for your purchase! <light_purple>❤",
+            "<white>Every purchase greatly helps us",
+            "<white>improve our servers and quality",
             "",
+            "<green>$ <white>Price: <green>$$price",
+            "<dark_purple>✦ <white>Package: <dark_purple>${pkg.ifBlank { "Store purchase" }}",
+            "",
+            "<gradient:#ffcf3a:#ff7a3a:#ff5a8a><st>                                                  </st></gradient>",
+            "$PREFIX<gray>Say <green><b>GG</b></green> <gray>in chat in the next <white>10 seconds</white> <gray>for free gold!",
         )
         lines.forEach { Bukkit.broadcast(mm(it)) }
-        for (pl in Bukkit.getOnlinePlayers()) pl.playSound(pl.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f)
+        song()
         ggUntil = System.currentTimeMillis() + 10_000
         ggClaimed.clear()
         addPiggy(usd)
+    }
+
+    /** A short note-block jingle for everyone online (like DrillSim's purchase song). */
+    private fun song() {
+        val notes = listOf(
+            Sound.BLOCK_NOTE_BLOCK_BELL to 0.75f, Sound.BLOCK_NOTE_BLOCK_BELL to 0.94f, Sound.BLOCK_NOTE_BLOCK_BELL to 1.12f,
+            Sound.BLOCK_NOTE_BLOCK_CHIME to 1.5f, Sound.BLOCK_NOTE_BLOCK_HARP to 1.12f, Sound.BLOCK_NOTE_BLOCK_CHIME to 1.5f,
+        )
+        notes.forEachIndexed { i, (snd, pitch) ->
+            plugin.server.scheduler.runTaskLater(plugin, Runnable {
+                for (pl in Bukkit.getOnlinePlayers()) {
+                    pl.playSound(pl.location, snd, 0.8f, pitch)
+                    if (i == 3) pl.playSound(pl.location, Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.75f)
+                }
+            }, i * 3L)
+        }
+        plugin.server.scheduler.runTaskLater(plugin, Runnable { for (pl in Bukkit.getOnlinePlayers()) pl.playSound(pl.location, Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.3f) }, notes.size * 3L + 2)
     }
 
     private fun addPiggy(usd: Double) {

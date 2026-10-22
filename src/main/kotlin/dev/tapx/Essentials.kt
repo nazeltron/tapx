@@ -58,6 +58,12 @@ object Essentials : Listener {
 
     fun nick(p: Player): String? = data.getString("nicks.${p.uniqueId}")
 
+    /** Mute for [ms] milliseconds (null = forever); used by warnings. */
+    fun muteFor(id: UUID, ms: Long?) {
+        mutedUntil[id] = if (ms == null) Long.MAX_VALUE else System.currentTimeMillis() + ms
+        saveMutes()
+    }
+
     private fun players() = Bukkit.getOnlinePlayers().map { it.name }
 
     // ---------------------------------------------------------------- commands

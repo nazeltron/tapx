@@ -82,6 +82,11 @@ class TapXPlugin : JavaPlugin(), Listener, TabExecutor {
         Essentials.enable(this)
         TabList.enable(this)
         Discord.enable(this)
+        ChatFilter.enable(this)
+        ChatGames.enable(this)
+        Welcome.enable(this)
+        Warns.enable(this)
+        StoreCommands.enable(this)
         Cmds.register("rank", listOf("setrank", "ranks"), "tapx.admin", "/rank <set|add|remove|list> <player> [rank]", tab = { c -> rankArgs(c.args) }) { c -> rankCommand(c.sender, c.args) }
         Cmds.register("gamepass", listOf("gamepasses", "gp", "pass"), "tapx.admin", "/gamepass <add|remove|set|list> <player> [pass]", tab = { c -> passArgs(c.args) }) { c -> passCommand(c.sender, c.args) }
         server.onlinePlayers.forEach(::loadSession)

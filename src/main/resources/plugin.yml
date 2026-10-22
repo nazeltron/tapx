@@ -36,3 +36,24 @@ permissions:
   tapx.tag.helper:
     description: HELPER tag
     default: false
+  tapx.chatgame:
+    description: Start and stop chat games
+    default: op
+  tapx.chat.filter:
+    description: Edit the chat filter (/chatfilter)
+    default: op
+  tapx.chat.delay:
+    description: Set the chat delay (/chatdelay)
+    default: op
+  tapx.chat.bypass:
+    description: Skip chat delay, repeat, caps and link checks (not the word filter)
+    default: op
+  tapx.staff.helper:
+    description: Helper staff level (warn with chat punishments, see filter alerts)
+    default: false
+  tapx.staff.mod:
+    description: Mod staff level (bans up to 14 days, /unwarn)
+    default: false
+  tapx.staff.admin:
+    description: Admin staff level (permanent and IP bans, /clearwarns)
+    default: false
