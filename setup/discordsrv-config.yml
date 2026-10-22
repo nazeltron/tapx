@@ -1,15 +1,17 @@
 # DiscordSRV config for the TapX server: it runs on the SAME bot as DrillSim, so players still DM the
-# DrillSim bot to link. Put this file at plugins/DiscordSRV/config.yml on the TapX server.
+# DrillSim bot to link, but TapX and DrillSim links are SEPARATE (link once on each server).
+# Put this file at plugins/DiscordSRV/config.yml on the TapX server. Nothing changes on DrillSim.
 # Lines marked "TAPX:" are the ones changed from DiscordSRV's defaults. Everything else is default.
 #
-# How linking works with two servers on one bot:
-#  - Both servers' DiscordSRV use the same bot token and the same MySQL link database (the Jdbc lines below).
-#    A link made on either server counts on both, and codes from TapX's /link are stored in that database.
-#  - Only DrillSim's DiscordSRV answers DMs (MinecraftDiscordAccountLinkedUsePM is false here), so the bot
-#    replies once. DrillSim's DiscordSRV must use the same Jdbc lines too (copy them into its config).
-#  - No MySQL? Set MinecraftDiscordAccountLinkedUsePM to true and remove the Jdbc lines: linking then works
-#    per server (players link once on each), and the other server's DiscordSRV may also answer "invalid code".
-#  - TapX itself gives the link rewards (config.yml "discord:"), so no console commands are needed here.
+# How it tells the two servers apart:
+#  - DrillSim's /link codes are 4 numbers (DiscordSRV's own). TapX's /link codes look like TAPX-KQZMW
+#    (letters only, so they can never be mistaken for a DrillSim code).
+#  - TapX reads the bot's DMs itself and links TAPX- codes into this server's own link list
+#    (plugins/DiscordSRV/accounts on the TapX server). This DiscordSRV's own DM linking is off below,
+#    so 4-number codes are left to DrillSim.
+#  - DrillSim's DiscordSRV also answers a TAPX- code ("Link codes are 4 numbers long"); that reply comes
+#    from the same bot, so TapX deletes it right away.
+#  - TapX gives the link rewards itself (config.yml "discord:"), so no console commands are needed here.
 
 # Don't touch pls
 ConfigVersion: 1.30.5
@@ -32,7 +34,7 @@ DiscordInviteLink: "https://discord.gg/drillnetwork"
 # Experiments
 # These features are not fully optimized; use at your own risk
 
-# TAPX: the shared link database. Use the SAME values in DrillSim's DiscordSRV config.
+# TAPX: keep these as they are (no database), so TapX's links are stored separately from DrillSim's.
 # JDBC (MySQL/MariaDB)
 Experiment_JdbcAccountLinkBackend: "jdbc:mysql://HOST:PORT/DATABASE?autoReconnect=true&useSSL=false"
 Experiment_JdbcTablePrefix: "discordsrv"
@@ -154,13 +156,13 @@ ChannelUpdater: []
 DiscordCannedResponses: {}
 
 # Minecraft to Discord account linking
-# TAPX: rewards are given by TapX itself. The role is the same as DrillSim's.
+# TAPX: rewards are given by TapX itself. The role is given when someone links on TapX (use a different
+# role name, e.g. "TapX Linked", if you want to tell TapX and DrillSim links apart in Discord).
 MinecraftDiscordAccountLinkedConsoleCommands: []
 MinecraftDiscordAccountUnlinkedConsoleCommands: []
 MinecraftDiscordAccountLinkedRoleNameToAddUserTo: "Linked"
 MinecraftDiscordAccountLinkedAllowRelinkBySendingANewCode: false
-# TAPX: false = this server's DiscordSRV ignores DMs; DrillSim's DiscordSRV reads the code from the shared
-# database and links it, so the DrillSim bot answers once. (true if you don't use the shared database.)
+# TAPX: must be false: TapX handles TAPX- codes in DMs itself and DrillSim's DiscordSRV handles its own.
 MinecraftDiscordAccountLinkedUsePM: false
 MinecraftDiscordAccountLinkedMessageDeleteSeconds: 0
 

@@ -10,11 +10,14 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Discord linking through DiscordSRV, the same way as DrillSim: /link gives a code that players DM
- * to the DrillSim bot (TapX's DiscordSRV runs on the same bot token and shares DrillSim's link
- * database, see setup/discordsrv-config.yml). Linked players who are also in the Discord server get
- * the [LINK_REWARDS]; the first link also gives gems and pet eggs. Talks to DiscordSRV by
- * reflection, so TapX starts without it.
+ * Discord linking through DiscordSRV, on the same bot as DrillSim but linked separately: /link gives
+ * a TapX code ("TAPX-KQZMW", letters only, so it can never match DrillSim's 4-digit codes) that
+ * players DM to the DrillSim bot. TapX reads the DMs itself (a JDA listener on its DiscordSRV, whose
+ * own DM linking is off) and stores the link in TapX's DiscordSRV, so TapX and DrillSim links are
+ * separate. DrillSim's DiscordSRV also answers every DM ("that's not a 4-number code"); that stray
+ * reply is the same bot, so TapX deletes it. See setup/discordsrv-config.yml.
+ * Linked players who are also in the Discord server get the [LINK_REWARDS]; the first link also
+ * gives gems and pet eggs. Talks to DiscordSRV by reflection, so TapX starts without it.
  */
 object Discord : Listener {
     private lateinit var plugin: TapXPlugin
@@ -22,6 +25,13 @@ object Discord : Listener {
     private val codeCooldown = ConcurrentHashMap<UUID, Long>()
     /** Discord id -> (in the server, checked at) for REST lookups when the member cache misses. */
     private val memberCache = ConcurrentHashMap<String, Pair<Boolean, Long>>()
+    /** TapX link codes ("KQZMW" without the TAPX- prefix) -> (player, expires at). */
+    private val codes = ConcurrentHashMap<String, Pair<UUID, Long>>()
+    /** DM channel id -> until when the bot's other replies there (DrillSim's) are deleted. */
+    private val cleanup = ConcurrentHashMap<String, Long>()
+    @Volatile private var listenedJda: Any? = null
+    private const val MARK = "**TapX** »"
+    private const val CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
 
     fun available() = Bukkit.getPluginManager().isPluginEnabled("DiscordSRV")
 
@@ -91,6 +101,8 @@ object Discord : Listener {
                 check(pl)
             })
         }
+        // read the bot's DMs (re-attached when DiscordSRV reconnects)
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, Runnable { if (available()) attachListener() }, 100L, 400L)
         // check links in the background; reward the first link
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, Runnable { if (available()) Bukkit.getOnlinePlayers().forEach(::check) }, 200L, 400L)
         val remind = (p.config.getDouble("discord.reminder-minutes", 10.0) * 60 * 20).toLong()
@@ -117,12 +129,16 @@ object Discord : Listener {
         }
         if ((codeCooldown[pl.uniqueId] ?: 0) > System.currentTimeMillis()) return pl.say("<gray>Please wait a few seconds before asking for a new code.")
         codeCooldown[pl.uniqueId] = System.currentTimeMillis() + 10_000
-        val code = runCatching { linkManager()?.let { call(it, "generateCode", pl.uniqueId) as String } }.getOrNull()
-            ?: return pl.say("<red>Couldn't make a code right now. Please try again.")
+        if (dsrv()?.let { runCatching { call(it, "getJda") }.getOrNull() } == null) return pl.say("<red>Linking isn't available right now (the bot is offline). Please tell a staff member.")
+        codes.entries.removeIf { it.value.first == pl.uniqueId || it.value.second < System.currentTimeMillis() }
+        var raw: String
+        do { raw = (1..5).map { CODE_LETTERS.random() }.joinToString("") } while (codes.putIfAbsent(raw, pl.uniqueId to System.currentTimeMillis() + 15 * 60_000) != null)
+        val code = "TAPX-$raw"
         pl.sayRaw("")
         pl.sayRaw(" <#5865f2><b>LINK YOUR DISCORD</b>")
         pl.sayRaw(" <white>1. <gray>Join our Discord: ${inviteLink()}")
-        pl.sayRaw(" <white>2. <gray>DM this code to the <#8ea1e1>${bot()} <gray>bot: <click:copy_to_clipboard:'$code'><hover:show_text:'<gray>Click to copy'><b><#ffd54a>$code</#ffd54a></b></hover></click> <dark_gray>(click to copy)")
+        pl.sayRaw(" <white>2. <gray>DM this code to the <#8ea1e1>${bot()} <gray>bot: <click:copy_to_clipboard:'$code'><hover:show_text:'<gray>Click to copy'><b><#ffd54a>$code</#ffd54a></b></hover></click> <dark_gray>(click to copy, works for 15 min)")
+        pl.sayRaw(" <dark_gray>This links your TapX account only; DrillSim has its own /link.")
         pl.sayRaw(" <gray>Link your Discord to get:")
         rewardLines(pl)
         pl.sayRaw("")
@@ -155,6 +171,65 @@ object Discord : Listener {
                 TabList.refresh(pl)
             })
         }
+    }
+
+    // ---------------------------------------------------------------- DMs to the bot
+    private fun attachListener() {
+        val jda = dsrv()?.let { runCatching { call(it, "getJda") }.getOrNull() } ?: return
+        if (jda === listenedJda) return
+        runCatching {
+            val iface = Class.forName("github.scarsz.discordsrv.dependencies.jda.api.hooks.EventListener", true, jda.javaClass.classLoader)
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) { self, m, args ->
+                when (m.name) {
+                    "onEvent" -> { runCatching { onDiscordEvent(jda, args!![0]) }.onFailure { plugin.logger.warning("Discord DM handling failed: $it") }; null }
+                    "hashCode" -> System.identityHashCode(self)
+                    "equals" -> self === args?.get(0)
+                    "toString" -> "TapX link listener"
+                    else -> null
+                }
+            }
+            val arr = java.lang.reflect.Array.newInstance(Any::class.java, 1).also { java.lang.reflect.Array.set(it, 0, proxy) }
+            jda.javaClass.methods.first { it.name == "addEventListener" }.invoke(jda, arr)
+            listenedJda = jda
+            plugin.logger.info("Listening for TapX link codes in the bot's DMs.")
+        }.onFailure { plugin.logger.warning("Couldn't listen to the Discord bot's DMs: $it") }
+    }
+
+    private fun reply(msg: Any, text: String) = runCatching { call(call(msg, "reply", "$MARK $text")!!, "queue") }
+
+    private fun onDiscordEvent(jda: Any, e: Any) {
+        if (e.javaClass.simpleName != "PrivateMessageReceivedEvent") return
+        val msg = call(e, "getMessage") ?: return
+        val author = call(msg, "getAuthor") ?: return
+        val authorId = call(author, "getId") as String
+        val content = (call(msg, "getContentRaw") as String).trim()
+        val channelId = call(call(msg, "getChannel")!!, "getId") as String
+        val selfId = call(call(jda, "getSelfUser")!!, "getId") as String
+        if (authorId == selfId) {
+            // DrillSim's DiscordSRV answering a TapX code ("Are you sure that's your code?"): remove it
+            if (!content.startsWith(MARK) && (cleanup[channelId] ?: 0) > System.currentTimeMillis()) runCatching { call(call(msg, "delete")!!, "queue") }
+            return
+        }
+        if (call(author, "isBot") == true) return
+        val norm = content.uppercase().replace(Regex("[^A-Z0-9]"), "")
+        if (!norm.startsWith("TAPX")) return // DrillSim's own codes and anything else: not ours
+        cleanup[channelId] = System.currentTimeMillis() + 10_000
+        val raw = norm.removePrefix("TAPX")
+        val entry = codes[raw]?.takeIf { it.second > System.currentTimeMillis() }
+            ?: return run { reply(msg, "I don't know that TapX code. Type `/link` on the TapX server to get a new one."); Unit }
+        val lm = linkManager() ?: return run { reply(msg, "Linking isn't available right now, please try again later."); Unit }
+        val already = runCatching { call(lm, "getUuid", authorId) as UUID? }.getOrNull()
+        if (already != null && already != entry.first) {
+            val name = Bukkit.getOfflinePlayer(already).name ?: already.toString()
+            reply(msg, "This Discord account is already linked to **$name** on TapX. Type `/unlink` on TapX as $name first.")
+            return
+        }
+        codes.remove(raw)
+        if (discordId(entry.first) != null) runCatching { call(lm, "unlink", entry.first) }
+        call(lm, "link", authorId, entry.first)
+        val name = Bukkit.getOfflinePlayer(entry.first).name ?: "your account"
+        reply(msg, "Your Discord is now linked to **$name** on TapX! Your rewards turn on in a few seconds. (DrillSim links separately.)")
+        Bukkit.getPlayer(entry.first)?.let(::check)
     }
 
     @EventHandler
