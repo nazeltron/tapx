@@ -647,6 +647,7 @@ class Game(var d: PlayerData, private val events: GameEvents) {
             it.staff = old.staff
             it.tutorial = old.tutorial
             it.wheelDay = old.wheelDay
+            it.wheelSpins = old.wheelSpins
             it.discordLinked = old.discordLinked
             it.discordRewarded = old.discordRewarded
             it.promos = old.promos
