@@ -132,9 +132,10 @@ When the piggy bank fills (default $100 of purchases) everyone gets a 2x EVERYTH
 `/seen`, `/sudo`, `/nick`. For everyone: `/msg /r`, `/ping`, `/list`, `/afk`, `/rules`, `/store`, `/discord`, `/link`, `/promo`.
 
 **Animated ranks, names and tab (UI pack)** - every player gets a second tiny resource pack on join with a text
-shader that animates certain colours in a soft "bubbly" style: each letter gets a candy gloss (lighter top, deeper
-bottom), a gentle breathing glow and a soft shine sweeping across; OWNER, ELITE, TITAN and the TapX title/lines/prefix
-slowly fade through their theme colours, LEGEND through a pastel rainbow. Nothing moves or wiggles. Names get a softer
+shader that animates certain colours in a vibrant "bubbly" style: boosted colours, a candy gloss on each letter
+(lighter top, deeper bottom), a soft shine sweeping across, and a "puff" where letters swell a little around their own
+centre and settle back, rippling along tags and the title like bubbles (they never move up or down). OWNER, ELITE,
+TITAN and the TapX title/lines/prefix fade through their theme colours, LEGEND through the rainbow. Names get a softer
 version of their rank's style. It works everywhere text is drawn (tab, chat, /list). The styles live in `TextFx.kt`,
 which also generates the shader. Without the pack players see the same colours, just not animated.
 `text-animations: false` turns it off. Both packs are sent as required (`force-resource-packs: true`), so players

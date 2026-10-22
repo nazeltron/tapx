@@ -49,11 +49,11 @@ object TabList : Listener {
     private fun nameOf(p: Player) = Essentials.nick(p)?.let { "<italic>$it</italic>" } ?: p.name
 
     private fun stageColor(stage: Int) = when {
-        stage >= 300 -> "#ff55ff"; stage >= 150 -> "#ff9a3a"; stage >= 75 -> "#5a8aff"; stage >= 25 -> "#55ffff"; else -> "#55ff55"
+        stage >= 300 -> "#ff3cf0"; stage >= 150 -> "#ff8a12"; stage >= 75 -> "#3c7aff"; stage >= 25 -> "#2ff2ff"; else -> "#3dff4a"
     }
 
     private fun prestigeColor(n: Int) = when {
-        n >= 50 -> "#b05aff"; n >= 20 -> "#ff5555"; n >= 5 -> "#55ffff"; n > 0 -> "#ffffff"; else -> "#aaaaaa"
+        n >= 50 -> "#a63cff"; n >= 20 -> "#ff2e3e"; n >= 5 -> "#2ff2ff"; n > 0 -> "#ffffff"; else -> "#aaaaaa"
     }
 
     /** One row like DrillSim's: "RANK Name  ✦stage [prestiges]", sorted staff > rank > stage. */
@@ -83,7 +83,7 @@ object TabList : Listener {
         for (p in Bukkit.getOnlinePlayers()) {
             refresh(p)
             val ping = p.ping
-            val pingColor = if (ping < 80) "#55ff55" else if (ping < 180) "#ffff55" else "#ff5555"
+            val pingColor = if (ping < 80) "#3dff4a" else if (ping < 180) "#ffe21a" else "#ff2e3e"
             p.sendPlayerListHeaderAndFooter(
                 mm("${top?.let { "$it\n" } ?: ""}$line\n$title\n${TextFx.wrap("season", season)}\n"),
                 mm("\n${TextFx.wrap("label", smallCaps("Online:"))} <white>${online.size}</white> <dark_gray>|</dark_gray> ${TextFx.wrap("label", smallCaps("TPS:"))} <white>${"%.0f".format(tps)}</white> " +
