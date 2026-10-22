@@ -21,9 +21,30 @@ const val TAU = Math.PI * 2
  */
 object Res { @Volatile var k = 2 }
 
-/** Draw an image made by [hiRes] (k device pixels per unit) at its size in layout units. */
+/**
+ * Pixel art kept at block resolution: one pixel per [unitsPerPx] layout units (4-16x less memory
+ * than a full-resolution copy). [blit] draws a full-resolution copy made on first use (scaled
+ * drawing is several times slower than a plain copy); that copy is soft, so it's dropped when
+ * memory runs short and rebuilt when needed. [prescale] = false (images used only for a moment,
+ * like monster frames) always draws scaled.
+ */
+class UnitImage(w: Int, h: Int, val unitsPerPx: Int, val prescale: Boolean = true) : java.awt.image.BufferedImage(maxOf(1, w), maxOf(1, h), TYPE_INT_ARGB) {
+    @Volatile var big: java.lang.ref.SoftReference<java.awt.image.BufferedImage>? = null
+}
+
+/** Draw an image made by [hiRes] (k device pixels per unit), or a [UnitImage], at its size in layout units. */
 fun Graphics2D.blit(img: java.awt.image.BufferedImage, x: Int, y: Int) {
-    drawImage(img, x, y, img.width / Res.k, img.height / Res.k, null)
+    if (img is UnitImage) {
+        if (!img.prescale) { drawImage(img, x, y, img.width * img.unitsPerPx, img.height * img.unitsPerPx, null); return }
+        val b = img.big?.get() ?: run {
+            val s = img.unitsPerPx * Res.k
+            val o = java.awt.image.BufferedImage(img.width * s, img.height * s, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            val g = o.createGraphics(); g.drawImage(img, 0, 0, o.width, o.height, null); g.dispose()
+            img.big = java.lang.ref.SoftReference(o); o
+        }
+        drawImage(b, x, y, b.width / Res.k, b.height / Res.k, null)
+    }
+    else drawImage(img, x, y, img.width / Res.k, img.height / Res.k, null)
 }
 
 /** A transparent (or opaque) image of [w] x [h] layout units, with a Graphics already scaled to units. */

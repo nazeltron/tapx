@@ -241,8 +241,10 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
                 if (c.t > 0.8) c.fly = true
             } else {
                 val dx = gold.first - c.x; val dy = gold.second - c.y; val dist = hypot(dx, dy)
-                if (dist < 24) { ci.remove(); host.sfx(Sfx.COIN); continue }
                 val sp = 900 + c.t * 600
+                // collected once this step would reach the counter (a fast coin used to overshoot it
+                // and circle forever, piling up and slowing everything down); 3 s at most either way
+                if (dist < 24 || sp * dt >= dist || c.t > 3) { ci.remove(); host.sfx(Sfx.COIN); continue }
                 c.x += dx / dist * sp * dt; c.y += dy / dist * sp * dt
             }
         }
@@ -282,13 +284,13 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
 
     // ================================================================== effects helpers
     private fun floater(text: String, x: Double, y: Double, color: Color, scale: Int, vx: Double = Random.nextDouble(-20.0, 20.0), vy: Double = -90.0, life: Double = 1.0) {
-        floaters += Floater(text, x, y, vx, vy, color, scale, life, life)
+        if (floaters.size < 40) floaters += Floater(text, x, y, vx, vy, color, scale, life, life)
         if (floaters.size > 30) floaters.removeAt(0)
     }
     private fun burst(x: Double, y: Double, color: Color, n: Int, speed: Double = 220.0, size: Double = 4.0, grav: Double = 500.0) {
         repeat(n) {
             val a = Random.nextDouble(TAU); val v = Random.nextDouble(speed * 0.3, speed)
-            parts += Part(x, y, cos(a) * v, sin(a) * v - speed * 0.3, Random.nextDouble(0.4, 0.9), color, Random.nextDouble(size * 0.5, size), grav)
+            if (parts.size < 400) parts += Part(x, y, cos(a) * v, sin(a) * v - speed * 0.3, Random.nextDouble(0.4, 0.9), color, Random.nextDouble(size * 0.5, size), grav)
         }
         while (parts.size > 160) parts.removeAt(0)
     }
@@ -311,7 +313,7 @@ class GameScreen(private val host: ScreenHost, val width: Int, val height: Int) 
     override fun onKill(m: Monster, gold: Double, gems: Int) {
         val (cx, cy) = monsterCenter()
         burst(cx, cy, currentSpec()?.color ?: Color.WHITE, 14, 340.0, 7.0)
-        repeat(if (m.boss) 8 else if (m.mimic) 10 else 3) { coins += Coin(cx, cy, Random.nextDouble(-160.0, 160.0), Random.nextDouble(-380.0, -200.0)) }
+        if (coins.size < 60) repeat(if (m.boss) 8 else if (m.mimic) 10 else 3) { coins += Coin(cx, cy, Random.nextDouble(-160.0, 160.0), Random.nextDouble(-380.0, -200.0)) }
         floater("+" + fmt(gold), cx, cy - 60, hex("ffd23a"), 2, vx = 0.0, vy = -70.0, life = 1.2)
         if (gems > 0) floater("+$gems GEM" + (if (gems > 1) "S" else ""), cx, cy - 90, hex("6ae4ff"), 2, vx = 0.0, vy = -50.0, life = 1.4)
         host.sfx(if (m.boss) Sfx.BOSS_KILL else Sfx.KILL)

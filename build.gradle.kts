@@ -73,3 +73,9 @@ tasks.register<JavaExec>("fontCheck") {
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass.set("dev.tapx.FontCheckKt")
 }
+tasks.register<JavaExec>("perfCheck") {
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("dev.tapx.PerfCheckKt")
+    jvmArgs("-Xmx1g")
+}
+tasks.register("printTestCp") { doLast { println(sourceSets.test.get().runtimeClasspath.asPath) } }

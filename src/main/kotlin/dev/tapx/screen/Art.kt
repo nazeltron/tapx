@@ -199,7 +199,7 @@ object Art {
     private const val CHIBI_X = 62.0
     private const val CHIBI_Y = 104.0
     private val chibiCache = object : java.util.LinkedHashMap<Pose, BufferedImage>(256, 0.75f, true) {
-        override fun removeEldestEntry(e: MutableMap.MutableEntry<Pose, BufferedImage>) = size > 900
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<Pose, BufferedImage>) = size > 400
     }
 
     private fun chibiSprite(p: Pose): BufferedImage {
@@ -216,7 +216,8 @@ object Art {
     }
 
     /** The full character in local units, feet at (0, 0). */
-    private fun drawChibiNow(g: Graphics2D, l: Look, bob: Double, capeW: Double, swing: Double, atk: Double) = with(g) {
+    private fun drawChibiNow(g: Graphics2D, l: Look, bob: Double, capeW: Double, swing: Double, atk: Double): Unit = with(g) {
+        if (l.hairStyle == "beetle") return drawBeetleKnight(this, l, bob, swing, atk)
         val lean = if (atk > 0 && atk < 1) sin(atk * PI) * 4 else 0.0
         val step = if (atk > 0 && atk < 1) sin(atk * PI) * 3 else 0.0
         val skin = hex(l.skin); val outfit = hex(l.outfit)
@@ -252,6 +253,110 @@ object Art {
         drawWeapon(this, l.weapon, l.blade?.let(::hex) ?: hex("e6edf5"), l.bladeGlow?.let(::hex), l.glow?.let(::hex))
         fillStroke(circle(0.0, 0.0, 3.4), skin, 1.8f)
         fill(circle(-1.0, -1.0, 1.1), skin.shade(0.35))
+    }
+
+    /**
+     * The player's fighter: a stocky beetle knight (domed insect helmet with antennae and a visor
+     * slit, rounded shoulder plates, a cloth tabard, a big round shield in front and a warhammer
+     * held up behind that slams down on attack). Feet at (0, 0), facing right. Armour, trim, the
+     * hammer's metal and the helmet take the equipped gear / skin colours.
+     */
+    private fun drawBeetleKnight(g: Graphics2D, l: Look, bob: Double, swing: Double, atk: Double) = with(g) {
+        val attacking = atk > 0 && atk < 1
+        val armor = hex(l.outfit); val trim = hex(l.trim)
+        val helm = l.helmColor?.let(::hex) ?: armor
+        val metal = l.blade?.let(::hex) ?: hex("b4b0bc")
+        val cloth = hex("f2eee6"); val under = hex(l.pants); val boots = hex(l.boots)
+        val lunge = if (attacking) sin(atk * PI) * 4 else 0.0
+        fill(ellipse(0.0, 0.0, 20.0, 4.8), Color(0, 0, 0, 70))
+        translate(lunge, 0.0)
+
+        // the warhammer, behind the body: raised up and back, slams forward when attacking
+        val ang = if (attacking) {
+            if (atk < 0.3) lerp(-0.55, -1.05, atk / 0.3) else lerp(-1.05, 1.95, 1 - (1 - (atk - 0.3) / 0.7).pow(3))
+        } else -0.55 + swing * 0.04
+        save {
+            translate(-7.0, -31 + bob)
+            rotate(ang)
+            fillStroke(rrect(-1.8, -40.0, 3.6, 46.0, 1.6), hex("6e4a2c"), 1.8f)          // handle
+            fill(rrect(-0.8, -38.0, 1.0, 40.0, 0.5), hex("9a6a40"))
+            fillStroke(rrect(-3.0, -2.0, 6.0, 5.0, 1.5), trim.shade(-0.2), 1.6f)         // grip cap
+            val head = rrect(-13.0, -54.0, 26.0, 17.0, 3.5)
+            l.bladeGlow?.let { gl -> save { alpha(0.35); fill(rrect(-16.0, -57.0, 32.0, 23.0, 6.0), hex(gl)) } }
+            paint = GradientPaint(0f, -54f, metal.shade(0.35), 0f, -37f, metal.shade(-0.35)); fill(head)
+            fill(java.awt.geom.Rectangle2D.Double(-13.0, -47.5, 26.0, 3.5), metal.shade(-0.45)) // band
+            fill(rrect(-11.0, -52.5, 10.0, 3.0, 1.5), WHITE.alpha(0.55))                        // shine
+            fill(rrect(-14.5, -51.0, 3.0, 11.0, 1.0), metal.shade(-0.25)); fill(rrect(11.5, -51.0, 3.0, 11.0, 1.0), metal.shade(-0.25))
+            stroke = stroke(1.8f); color = OUT; draw(head)
+        }
+        // back arm gripping the hammer
+        line(-6.0, -33 + bob, -7.0, -30 + bob, OUT, 7f); line(-6.0, -33 + bob, -7.0, -30 + bob, under, 5f)
+        fillStroke(circle(-7.0, -30 + bob, 3.6), armor.shade(-0.2), 1.6f)
+
+        // legs: dark under-suit with armoured shins and heavy boots
+        for ((lx, front) in listOf(-9.0 to false, 2.0 to true)) {
+            val sh = if (front) 0.0 else -0.18
+            fillStroke(rrect(lx, -15.0, 7.0, 12.0, 2.5), under.shade(sh), 1.8f)
+            fillStroke(rrect(lx - 0.5, -10.0, 8.0, 5.0, 2.0), armor.shade(sh - 0.1), 1.6f)
+            fillStroke(rrect(lx - 1.5, -4.5, 10.5, 5.5, 2.0), boots.shade(sh), 1.8f)
+            fill(rrect(lx - 0.5, -3.5, 3.0, 1.2, 0.6), boots.shade(0.4))
+        }
+
+        save {
+            translate(0.0, bob)
+            // torso: dark suit, chest plate, cloth tabard and a sash
+            fillStroke(rrect(-12.0, -39.0, 24.0, 26.0, 8.0), under)
+            val chest = rrect(-11.0, -38.0, 22.0, 15.0, 7.0)
+            paint = GradientPaint(0f, -38f, armor.shade(0.3), 0f, -23f, armor.shade(-0.3)); fill(chest)
+            fill(ellipse(-5.0, -34.0, 4.0, 2.2), WHITE.alpha(0.45))
+            stroke = stroke(1.6f); color = OUT; draw(chest)
+            val tabard = path { moveTo(-9.0, -25.0); lineTo(9.0, -25.0); lineTo(11.0, -10.0); lineTo(4.0, -12.0); lineTo(0.0, -8.0); lineTo(-4.0, -12.0); lineTo(-11.0, -10.0); closePath() }
+            paint = GradientPaint(0f, -25f, cloth, 0f, -8f, cloth.shade(-0.18)); fill(tabard)
+            stroke = stroke(1.6f); color = OUT; draw(tabard)
+            line(-10.0, -33.0, 9.0, -22.0, OUT, 4.6f); line(-10.0, -33.0, 9.0, -22.0, trim, 2.8f)        // sash
+            fill(rrect(-2.5, -26.5, 5.0, 4.0, 1.0), trim.shade(0.3))
+            // rounded shoulder plates
+            for ((px, r) in listOf(-11.0 to 7.5, 11.0 to 6.5)) {
+                val pad = circle(px, -35.0, r)
+                paint = RadialGradientPaint((px - 2).toFloat(), -38f, r.toFloat() * 1.4f, floatArrayOf(0f, 1f), arrayOf(armor.shade(0.35), armor.shade(-0.3)))
+                fill(pad); stroke = stroke(1.8f); color = OUT; draw(pad)
+                fill(ellipse(px - 2, -38.0, 2.2, 1.4), WHITE.alpha(0.6))
+                line(px - r * 0.7, -32.0, px + r * 0.7, -32.0, trim.shade(-0.1), 1.4f)
+            }
+            // the beetle helmet: a big dome with brown stripes, a visor slit and antennae
+            val hy = -51.0
+            for ((ax, tip) in listOf(-4.0 to -9.0, 4.0 to 9.0)) {
+                val ant = path { moveTo(ax, hy - 13); quadTo(ax + tip * 0.2, hy - 22, ax + tip * 0.6, hy - 25) }
+                stroke = stroke(3.2f); color = OUT; draw(ant)
+                stroke = stroke(1.6f); color = hex("8a5a30"); draw(ant)
+                fillStroke(circle(ax + tip * 0.6, hy - 25.5, 1.9), hex("a8703a"), 1.4f)
+            }
+            val dome = ellipse(0.0, hy, 16.0, 14.5)
+            paint = RadialGradientPaint(-5f, (hy - 6).toFloat(), 24f, floatArrayOf(0f, 0.6f, 1f), arrayOf(helm.shade(0.4), helm, helm.shade(-0.35)))
+            fill(dome)
+            save {
+                clip(dome)
+                for (sx in listOf(-7.0, 1.0)) fill(path { moveTo(sx, hy - 15); quadTo(sx + 5, hy - 4, sx + 3, hy + 10); lineTo(sx + 6, hy + 10); quadTo(sx + 8, hy - 4, sx + 3, hy - 15); closePath() }, trim.shade(-0.1))
+                fill(ellipse(-6.0, hy - 7, 6.0, 3.6), WHITE.alpha(0.7))
+                fill(java.awt.geom.Rectangle2D.Double(-16.0, hy + 8, 32.0, 8.0), helm.shade(-0.4))
+            }
+            stroke = stroke(2f); color = OUT; draw(dome)
+            val visor = rrect(1.0, hy - 1, 14.0, 5.5, 2.5)
+            fill(visor, hex("16121c"))
+            fill(rrect(5.5, hy + 0.6, 2.4, 2.2, 1.0), hex("7af0ff")); fill(rrect(10.5, hy + 0.6, 2.4, 2.2, 1.0), hex("7af0ff"))
+            stroke = stroke(1.4f); color = OUT; draw(visor)
+        }
+
+        // the round shield in front
+        val sx = 13.0 + (if (attacking) sin(atk * PI) * 2 else 0.0); val sy = -24.0 + bob
+        val shield = ellipse(sx, sy, 10.5, 14.0)
+        paint = RadialGradientPaint((sx - 3).toFloat(), (sy - 5).toFloat(), 18f, floatArrayOf(0f, 1f), arrayOf(cloth.shade(0.1), hex("c4b49c")))
+        fill(shield)
+        stroke = stroke(3.4f); color = OUT; draw(shield)
+        stroke = stroke(2f); color = trim.shade(-0.15); draw(ellipse(sx, sy, 9.2, 12.7))
+        fill(ellipse(sx - 4.0, sy - 6.0, 2.6, 4.0), WHITE.alpha(0.6))
+        fillStroke(circle(sx, sy, 3.6), metal, 1.6f)
+        fill(circle(sx - 1.0, sy - 1.0, 1.2), WHITE.alpha(0.8))
     }
 
     /** Torso and head, feet at (0, 0): shading, collar, belt, face with eyes, brows and ears. */
@@ -411,7 +516,7 @@ object Art {
             made
         }
         // one image pixel per layout unit; nearest-neighbour scaling keeps the blocks sharp
-        g.drawImage(img, Math.round(x - origin.first).toInt(), Math.round(gy - origin.second).toInt(), img.width, img.height, null)
+        g.blit(img, Math.round(x - origin.first).toInt(), Math.round(gy - origin.second).toInt())
     }
 
     private fun drawMonsterNow(g: Graphics2D, sp: MonsterSpec, x: Double, gy: Double, t: Double, hitT: Double, deathT: Double, age: Double, scaleAll: Double) {
@@ -927,7 +1032,7 @@ object Art {
 
     // Static pictures (icons, coins) are drawn once into small images and reused every frame.
     private val spriteCache = object : java.util.LinkedHashMap<String, BufferedImage>(128, 0.75f, true) {
-        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, BufferedImage>) = size > 600
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, BufferedImage>) = size > 400
     }
 
     /** A sprite with a 4px margin: [draw] paints with (0, 0) at the sprite's (4, 4). */

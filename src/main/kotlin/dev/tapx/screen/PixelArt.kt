@@ -17,8 +17,20 @@ object PixelArt {
     /** Saturation boost used everywhere ("more vibrant"). */
     const val VIVID = 1.35
 
+    /** [vivid] at the default strength for every colour (6 bits per channel), built once. */
+    private val vividLut: IntArray by lazy {
+        IntArray(1 shl 18) { k ->
+            val r = ((k shr 12) and 63) * 255 / 63; val g = ((k shr 6) and 63) * 255 / 63; val b = (k and 63) * 255 / 63
+            vividNow((r shl 16) or (g shl 8) or b, VIVID)
+        }
+    }
+
     /** More saturated [rgb] (pushed away from its own grey), then snapped to a map colour. */
-    fun vivid(rgb: Int, amount: Double = VIVID): Int {
+    fun vivid(rgb: Int, amount: Double = VIVID): Int =
+        if (amount == VIVID) vividLut[(((rgb shr 18) and 63) shl 12) or (((rgb shr 10) and 63) shl 6) or ((rgb shr 2) and 63)]
+        else vividNow(rgb, amount)
+
+    private fun vividNow(rgb: Int, amount: Double): Int {
         val r = (rgb shr 16) and 255; val g = (rgb shr 8) and 255; val b = rgb and 255
         val l = 0.299 * r + 0.587 * g + 0.114 * b
         fun f(c: Int) = (l + (c - l) * amount).toInt().coerceIn(0, 255)
@@ -26,6 +38,16 @@ object PixelArt {
     }
 
     fun vivid(c: Color): Color = Color(vivid(c.rgb and 0xffffff))
+
+    /** The pixel array of an INT_ARGB image (no per-pixel colour-model calls, unlike getRGB/setRGB). */
+    private fun data(img: BufferedImage): IntArray = (img.raster.dataBuffer as java.awt.image.DataBufferInt).data
+
+    /** [img]'s pixels as ARGB ints, fast for the usual INT_ARGB / INT_RGB images. */
+    private fun argb(img: BufferedImage): IntArray = when (img.type) {
+        BufferedImage.TYPE_INT_ARGB -> data(img)
+        BufferedImage.TYPE_INT_RGB -> data(img).let { d -> IntArray(d.size) { d[it] or (0xff shl 24) } }
+        else -> img.getRGB(0, 0, img.width, img.height, null, 0, img.width)
+    }
 
     private fun lum(rgb: Int) = (299 * ((rgb shr 16) and 255) + 587 * ((rgb shr 8) and 255) + 114 * (rgb and 255)) / 1000
 
@@ -36,7 +58,7 @@ object PixelArt {
     fun pixelize(src: BufferedImage, cell: Int, outline: Boolean = true): BufferedImage {
         val w = src.width; val h = src.height
         val cw = (w + cell - 1) / cell; val ch = (h + cell - 1) / cell
-        val px = src.getRGB(0, 0, w, h, null, 0, w)
+        val px = argb(src)
         val cells = IntArray(cw * ch) // ARGB; alpha 0 = empty
         for (cy in 0 until ch) for (cx in 0 until cw) {
             var n = 0; var nOpaque = 0; var nDark = 0; var nSoft = 0
@@ -71,7 +93,14 @@ object PixelArt {
                 else -> 0
             }
         }
-        return finish(cells, cw, ch, cell, w, h, outline)
+        if (outline) addOutline(cells, cw, ch)
+        // one pixel per block when blocks are whole layout units (the usual case): far less memory
+        if (cell % Res.k == 0) {
+            val img = UnitImage(cw, ch, cell / Res.k)
+            System.arraycopy(cells, 0, data(img), 0, cells.size)
+            return img
+        }
+        return finish(cells, cw, ch, cell, w, h)
     }
 
     /**
@@ -80,15 +109,15 @@ object PixelArt {
      * units, with anti-aliasing off. Returns the image at block resolution (one pixel per block):
      * draw it at [wU] x [hU] layout units and the default nearest-neighbour scaling keeps it crisp.
      */
-    fun render(wU: Int, hU: Int, cellU: Int, outline: Boolean = true, draw: (java.awt.Graphics2D) -> Unit): BufferedImage {
+    fun render(wU: Int, hU: Int, cellU: Int, outline: Boolean = true, prescale: Boolean = false, draw: (java.awt.Graphics2D) -> Unit): BufferedImage {
         val cw = (wU + cellU - 1) / cellU; val ch = (hU + cellU - 1) / cellU
-        val small = BufferedImage(cw, ch, BufferedImage.TYPE_INT_ARGB)
+        val small = UnitImage(cw, ch, cellU, prescale)
         val g = small.createGraphics()
         g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF)
         g.scale(1.0 / cellU, 1.0 / cellU)
         draw(g)
         g.dispose()
-        val cells = small.getRGB(0, 0, cw, ch, null, 0, cw)
+        val cells = data(small) // edited in place
         for (i in cells.indices) {
             val p = cells[i]; val a = p ushr 24
             cells[i] = when {
@@ -98,19 +127,17 @@ object PixelArt {
             }
         }
         if (outline) addOutline(cells, cw, ch)
-        small.setRGB(0, 0, cw, ch, cells, 0, cw)
         return small
     }
 
-    private fun finish(cells: IntArray, cw: Int, ch: Int, cell: Int, w: Int, h: Int, outline: Boolean): BufferedImage {
-        if (outline) addOutline(cells, cw, ch)
+    private fun finish(cells: IntArray, cw: Int, ch: Int, cell: Int, w: Int, h: Int): BufferedImage {
         val dst = IntArray(w * h)
         for (y in 0 until h) {
             val row = (y / cell) * cw
             for (x in 0 until w) dst[y * w + x] = cells[row + x / cell]
         }
         val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-        img.setRGB(0, 0, w, h, dst, 0, w)
+        System.arraycopy(dst, 0, data(img), 0, dst.size)
         return img
     }
 

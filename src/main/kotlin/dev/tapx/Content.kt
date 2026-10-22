@@ -69,7 +69,8 @@ val HEROES = listOf(
     Hero("astra", "Astra the Star Mage", 1.6e18, 3.8e14, Look("#f6d8c0", "#ffd8f0", "wizard", "#5a4ac0", "#ffe34a", "#2a2060", "staff", hat = "#3a2a8a", glow = "#ff9af0")),
 )
 
-val HERO_LOOK = Look("#f6cba4", "#ffd23a", "spiky", "#2f3448", "#e8b33a", "#2a2a36", "sword", cape = "#d8302f")
+/** The player's fighter: a beetle knight with a round shield and a warhammer (Art.drawBeetleKnight). */
+val HERO_LOOK = Look("#f6cba4", "#a8703a", "beetle", "#8e8498", "#a8703a", "#2c2532", "hammer", boots = "#3a2a24")
 
 /** Hero tap damage doubles every 50 hero levels. */
 fun tapMilestoneMult(level: Int): Double = Math.pow(2.0, (level / 50).toDouble())

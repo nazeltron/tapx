@@ -58,19 +58,13 @@ object Widgets {
     private fun pixel(key: String, w: Int, h: Int, draw: Graphics2D.(bw: Int, bh: Int) -> Unit): BufferedImage {
         synchronized(cache) { cache[key]?.let { return it } }
         val bw = maxOf(4, (w + B - 1) / B); val bh = maxOf(4, (h + B - 1) / B)
-        val small = BufferedImage(bw, bh, BufferedImage.TYPE_INT_ARGB)
+        val small = UnitImage(bw, bh, B)
         val g = small.createGraphics()
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF)
         g.draw(bw, bh)
         g.dispose()
-        val k = Res.k
-        val img = BufferedImage(w * k, h * k, BufferedImage.TYPE_INT_ARGB)
-        val ig = img.createGraphics()
-        ig.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR)
-        ig.drawImage(small, 0, 0, bw * B * k, bh * B * k, null)
-        ig.dispose()
-        synchronized(cache) { cache[key] = img }
-        return img
+        synchronized(cache) { cache[key] = small }
+        return small
     }
 
     private fun v(c: Color) = PixelArt.vivid(c)

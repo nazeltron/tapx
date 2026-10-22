@@ -19,6 +19,9 @@ turns each cached sprite into pixel art (1-unit blocks, dark outline, colours ma
 map colours so they're solid on the map); monsters are drawn at 8 fps straight at block resolution
 (PixelArt.render). Widgets are pixel UI-kit style (stepped corners, black outline, light top row, darker lip);
 text is Jersey 10 (GameFont) drawn crisp on its pixel grid. Ordered dithering (Palette) is left for the rest.
+Pixel sprites are UnitImages (one pixel per block; blit draws a soft-referenced full-size copy). The player's
+fighter is a beetle knight with shield + warhammer (Art.drawBeetleKnight, HERO_LOOK hairStyle "beetle").
+`./gradlew perfCheck` plays 15 minutes headless and prints frame cost, heap and list sizes per minute (catch leaks).
 Rendering budget: `./gradlew preview` prints the frame cost (~19 ms render + ~3 ms palette). Characters
 (per quantised pose), pets, icons, coins, portraits, widgets and text are cached sprites; only visible
 list rows are drawn. Gems are the paid currency (`/tapx gems ...` for the
