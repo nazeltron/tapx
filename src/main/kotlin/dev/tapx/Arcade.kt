@@ -210,7 +210,6 @@ class Arcade(private val plugin: TapXPlugin) : Listener {
             p.getAttribute(Attribute.WAYPOINT_RECEIVE_RANGE)?.removeModifier(waypointKey)
             p.getAttribute(Attribute.WAYPOINT_TRANSMIT_RANGE)?.removeModifier(waypointKey)
             p.isInvisible = false
-            plugin.pack.remove(p)
             p.inventory.heldItemSlot = p.inventory.heldItemSlot // the wheel moved the client's slot; put it back
             p.updateInventory()
             p.sendExperienceChange(p.exp, p.level)

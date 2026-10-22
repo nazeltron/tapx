@@ -31,10 +31,11 @@ so the smooth, anti-aliased art and gradients still come through (and still area
 **No crosshair**: players sit invisible, in adventure mode, on the camera entity (so the client
 draws no hotbar, hearts or hand, and the mouse wheel reaches the server as hotbar-slot changes).
 Only their client is told it is in creative mode (the server keeps adventure), so no XP/locator bar is drawn.
-While playing they get a tiny resource pack that blanks the crosshair, XP bar and locator bar; the plugin serves
-it on the Minecraft port itself, so there's nothing to set up. Players are asked once to accept it.
-Behind a proxy (Velocity/BungeeCord), upload `plugins/TapX/tapx-screen-pack.zip` somewhere and set
-`resource-pack-url`. Their real inventory and XP are untouched; the client is just shown them empty.
+Everyone gets one tiny TapX resource pack on join (required): the game's own bubbly sound effects
+(made by `tools/make_sounds.py`, played as `tapx:hit`, `tapx:coin` ...), the animated rank/tab text shader, and
+blank crosshair, XP bar and locator bar sprites. It comes from the public GitHub copy when that matches the plugin
+version, else from the Minecraft port itself, so there's nothing to set up. To host it yourself, upload
+`plugins/TapX/tapx-pack.zip` and set `resource-pack-url`. Players without the pack hear vanilla sounds instead. Their real inventory and XP are untouched; the client is just shown them empty.
 
 ## Install
 
@@ -138,8 +139,8 @@ centre and settle back, rippling along tags and the title like bubbles (they nev
 TITAN and the TapX title/lines/prefix fade through their theme colours, LEGEND through the rainbow. Names get a softer
 version of their rank's style. It works everywhere text is drawn (tab, chat, /list). The styles live in `TextFx.kt`,
 which also generates the shader. Without the pack players see the same colours, just not animated.
-`text-animations: false` turns it off. Both packs are sent as required (`force-resource-packs: true`), so players
-joining through Minehut (whose server-list entry has server packs off) still get the prompt; declining disconnects them.
+The pack is sent as required (`force-resource-packs: true`), so players joining through Minehut (whose
+server-list entry has server packs off) still get the prompt; declining disconnects them.
 
 **Tab list and chat** - DrillSim-style tab: every online player (also those on the game screen) as
 `RANK Name ✦best-stage [prestiges]`, sorted staff > rank > stage; header with the title, season and any running
@@ -204,8 +205,8 @@ screen-aspect: 1.778      # window shape the screen is sized for (16:9)
 screen-fps: 20            # screen updates per second, 2-40 (idle players drop to 10 then 5)
 screen-resolution: 2      # 2 = sharp 1792x1024 (14x8 maps), 1 = 896x512 (a quarter of the cost)
 render-threads: 2         # background threads that draw screens
-hide-crosshair: true      # send the crosshair-hiding pack to players on the game screen
-resource-pack-url: ""     # host the pack yourself (needed behind a proxy); empty = served on the game port
+resource-pack: true       # send the TapX pack (sounds, animated ranks, no crosshair) to everyone on join
+resource-pack-url: ""     # host the pack yourself; empty = GitHub copy or the game port
 ```
 
 Player progress is saved to `plugins/TapX/players/<uuid>.json`.

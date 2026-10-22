@@ -193,6 +193,17 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
         val now = System.currentTimeMillis()
         if (now - (lastSound[s] ?: 0) < (if (s == Sfx.COIN || s == Sfx.HIT) 120 else 60)) return
         lastSound[s] = now
+        if (plugin.pack.hasPack(player)) {
+            // the game's own bubbly sounds from the TapX pack; small pitch changes keep repeats lively
+            val vol = CUSTOM_VOLUME[s] ?: 0.5f
+            val pitch = if (s == Sfx.HIT || s == Sfx.COIN || s == Sfx.KILL) 0.94f + kotlin.random.Random.nextFloat() * 0.12f else 1f
+            val key = "tapx:" + s.name.lowercase()
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                if (player.isOnline) player.playSound(player.location, key, SoundCategory.MASTER, vol, pitch)
+            })
+            return
+        }
+        // without the pack: the closest vanilla sounds
         val (sound, vol, pitch) = when (s) {
             Sfx.HIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_WEAK, 0.25f, 1.2f)
             Sfx.CRIT -> Triple(Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.4f, 1.1f)
@@ -261,6 +272,14 @@ class Session(val plugin: TapXPlugin, val player: Player, data: PlayerData) : Ga
     override fun onAchievement(group: AchGroup, target: Double, gems: Int) = screen.onAchievement(group, target, gems)
 
     companion object {
+        /** Loudness of each custom sound (the files are all normalised the same). */
+        private val CUSTOM_VOLUME = mapOf(
+            Sfx.HIT to 0.45f, Sfx.CRIT to 0.6f, Sfx.KILL to 0.55f, Sfx.COIN to 0.35f, Sfx.BOSS to 0.7f, Sfx.BOSS_KILL to 0.7f,
+            Sfx.LEVEL_UP to 0.6f, Sfx.BUY to 0.55f, Sfx.CLICK to 0.4f, Sfx.ERROR to 0.5f, Sfx.THUNDER to 0.6f, Sfx.SPELL to 0.55f,
+            Sfx.PET to 0.5f, Sfx.CHEST to 0.6f, Sfx.LEGENDARY to 0.7f, Sfx.EQUIP to 0.5f, Sfx.WISP to 0.6f, Sfx.FAIL to 0.6f,
+            Sfx.ACHIEVEMENT to 0.6f,
+        )
+
         /** The game is laid out in 896x512 units, drawn on 7x4 maps per unit of resolution (Res.k). */
         const val LAYOUT_W = 896
         const val LAYOUT_H = 512

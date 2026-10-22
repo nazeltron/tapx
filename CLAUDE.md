@@ -4,7 +4,8 @@ Paper 1.21.11 plugin (Kotlin, Gradle + paperweight-userdev) — a Tap Titans-sty
 full-screen 2D map screen (fake glow item frames + map packets, per player, in a void "arcade" world).
 Players are auto-started in ADVENTURE mode (the client alone is told CREATIVE, so no XP/locator bar), invisible, seated on an ItemDisplay camera entity with a
 raw SetCamera packet (camera != player, so no hotbar/hearts; client is sent an empty inventory and 0 XP
-so no hand/level). ScreenPack (served over HTTP on the MC port via a Paper channel listener) blanks the
+so no hand/level). ScreenPack is the one TapX resource pack (sent to everyone on join, required; GitHub copy or HTTP on the MC port):
+custom sounds (src/main/resources/sounds, made by tools/make_sounds.py, tapx:<sfx>), the TextFx text shader and blank
 crosshair, XP bar and locator bar sprites (waypoint ranges are also zeroed while playing). A Netty handler reads input: clicks = ServerboundInteractPacket, mouse =
 head rotation (re-centred with relative rotation packets), wheel = ServerboundSetCarriedItemPacket;
 it drops item/inventory packets. The cursor is overlaid on the map colours every 25 ms, separately

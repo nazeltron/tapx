@@ -36,22 +36,16 @@ screen-resolution: 2
 # Background threads used to draw screens.
 render-threads: 2
 
-# Players on the game screen get a tiny resource pack that hides the crosshair and XP bar. It is
-# served on the Minecraft port itself (no extra setup). Behind a proxy (Velocity/Bungee), upload
-# plugins/TapX/tapx-screen-pack.zip somewhere and put its direct download link in resource-pack-url.
-hide-crosshair: true
+# Everyone gets one tiny TapX resource pack on join: the game's own sounds, the animated rank tags /
+# names / tab list, and no crosshair or XP bar on the game screen. It's downloaded from the public copy
+# on GitHub when that matches this version, else from the Minecraft port itself (no extra setup).
+# To host it yourself, upload plugins/TapX/tapx-pack.zip and put its direct link in resource-pack-url.
+resource-pack: true
 resource-pack-url: ""
-# Used automatically if a player can't download the pack from the game port (e.g. some hosts).
-# Animated rank tags, names and tab list (in tab and chat) through a second tiny resource pack that every
-# player gets on join (a text shader). Players without it just see the normal colours.
-text-animations: true
-# Make the packs required: players joining through Minehut (or with server packs turned off) still get
-# the pack prompt, and declining it disconnects them. false = optional packs.
+resource-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-pack.zip"
+# Make the pack required: players joining through Minehut (or with server packs turned off) still get
+# the pack prompt, and declining it disconnects them. false = optional.
 force-resource-packs: true
-# Optional: host the UI pack elsewhere (the file is saved as plugins/TapX/tapx-ui-pack.zip).
-ui-pack-url: ""
-ui-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-ui-pack.zip"
-resource-pack-fallback-url: "https://raw.githubusercontent.com/nazeltron/tapx/claude/blissful-fermi-68xow0/pack/tapx-screen-pack.zip"
 
 # --- Store, ranks and community ---
 # Your web store (PayNow etc.), shown by /store.
