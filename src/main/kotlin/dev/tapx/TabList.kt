@@ -115,7 +115,7 @@ object TabList : Listener {
         val d = plugin.session(p)?.d
         val rank = rankDef(d?.rank)
         val (open, close) = nameColor(p)
-        val linked = if (Discord.available()) (if (d?.discordLinked == true) "<green>✔ " else "<red>✖ ") else ""
+        val linked = if (d?.discordLinked == true) "<green>✔ " else ""
         val card = mm(
             "${tag(p).ifEmpty { "<gray>Player" }} <white>${p.name}\n" +
                 "<gray>Stage: <white>${d?.stage ?: 1} <dark_gray>(best ${d?.stats?.bestStage ?: 1})\n" +
