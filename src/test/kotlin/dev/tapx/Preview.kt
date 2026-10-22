@@ -132,7 +132,7 @@ fun main(args: Array<String>) {
     File(out, "rendertype_text.vsh").writeText(TextFx.vertexShader())
     // the animation styles, for scratch tools that preview them
     File(out, "textfx.json").writeText(TextFx.STYLES.joinToString(",", "{", "}") { st ->
-        "\"${st.key}\":{\"kind\":${st.kind.id},\"c1\":\"%06x\",\"c2\":\"%06x\",\"c3\":\"%06x\",\"speed\":${st.speed},\"shine\":${st.shine},\"wave\":${st.wave}}".format(st.c1, st.c2, st.c3)
+        "\"${st.key}\":{\"kind\":${st.kind.id},\"c1\":\"%06x\",\"c2\":\"%06x\",\"c3\":\"%06x\",\"speed\":${st.speed},\"shine\":${st.shine}}".format(st.c1, st.c2, st.c3)
     })
     println("Wrote previews to ${out.absolutePath}")
 }

@@ -132,11 +132,12 @@ When the piggy bank fills (default $100 of purchases) everyone gets a 2x EVERYTH
 `/seen`, `/sudo`, `/nick`. For everyone: `/msg /r`, `/ping`, `/list`, `/afk`, `/rules`, `/store`, `/discord`, `/link`, `/promo`.
 
 **Animated ranks, names and tab (UI pack)** - every player gets a second tiny resource pack on join with a text
-shader that animates certain colours: rank and staff tags shine (a glossy band sweeps across) or flow through their
-colours (OWNER purple→pink, ELITE red→orange, TITAN magenta→purple, LEGEND rainbow), names get a softer version in the
-same colour, and the tab title waves while the lines, footer and the chat "TAPX" prefix flow gold→orange→pink. It
-works everywhere text is drawn (tab, chat, /list). The styles live in `TextFx.kt`, which also generates the shader.
-Without the pack players see the same colours, just not animated. `text-animations: false` turns it off.
+shader that animates certain colours in a soft "bubbly" style: each letter gets a candy gloss (lighter top, deeper
+bottom), a gentle breathing glow and a soft shine sweeping across; OWNER, ELITE, TITAN and the TapX title/lines/prefix
+slowly fade through their theme colours, LEGEND through a pastel rainbow. Nothing moves or wiggles. Names get a softer
+version of their rank's style. It works everywhere text is drawn (tab, chat, /list). The styles live in `TextFx.kt`,
+which also generates the shader. Without the pack players see the same colours, just not animated.
+`text-animations: false` turns it off.
 
 **Tab list and chat** - DrillSim-style tab: every online player (also those on the game screen) as
 `RANK Name ✦best-stage [prestiges]`, sorted staff > rank > stage; header with the title, season and any running

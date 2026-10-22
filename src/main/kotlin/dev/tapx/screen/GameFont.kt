@@ -70,7 +70,7 @@ object GameFont {
             val text = clean(raw)
             val f = font(scale)
             val layout = TextLayout(text, f, frc)
-            val ow = if (outline != null) (1.6f + scale * 0.9f) * k else 0f
+            val ow = if (outline != null) (0.9f + scale * 0.5f) * k else 0f
             val padU = units(ow + 2.0 * k)
             val pad = padU * k
             val baseU = padU + units(layout.ascent.toDouble())
@@ -82,7 +82,7 @@ object GameFont {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
             val shape = layout.getOutline(AffineTransform.getTranslateInstance(pad.toDouble(), (baseU * k).toDouble()))
-            val drop = AffineTransform.getTranslateInstance(0.0, (1.0 + scale * 0.6) * k).createTransformedShape(shape)
+            val drop = AffineTransform.getTranslateInstance(0.0, (0.8 + scale * 0.4) * k).createTransformedShape(shape)
             if (outline != null) {
                 g.stroke = BasicStroke(ow * 2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
                 g.color = Color(0, 0, 0, 110); g.draw(drop)
