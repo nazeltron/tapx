@@ -444,3 +444,22 @@ fun rankPerks(r: Rank): String = buildList {
 
 // ---------------------------------------------------------------- daily wheel (label, chance)
 val WHEEL = listOf("GOLD" to 0.25, "EGGS" to 0.18, "RELICS" to 0.12, "2X GOLD" to 0.12, "MANA" to 0.12, "BIG GOLD" to 0.10, "CHEST" to 0.08, "GEMS" to 0.03)
+
+// ---------------------------------------------------------------- Discord link rewards
+// Active while the account is linked (/link, DM the code to the bot) and the player is in the Discord server.
+const val LINK_GOLD = 1.5
+const val LINK_DAMAGE = 1.25
+const val LINK_AUTO_TAPS = 1
+const val LINK_MANA = 10
+/** One-time gifts for the first link. */
+const val LINK_GEMS = 10L
+const val LINK_EGGS = 5
+
+val LINK_REWARDS = listOf(
+    "<gold>x$LINK_GOLD gold</gold> from everything",
+    "<red>x$LINK_DAMAGE damage</red> (taps and allies)",
+    "<yellow>+$LINK_AUTO_TAPS automatic tap</yellow> every second",
+    "<aqua>+$LINK_MANA max mana</aqua>",
+    "<green>✔</green> next to your name in chat",
+    "<light_purple>One-time gift: <aqua>$LINK_GEMS gems</aqua> + <green>$LINK_EGGS pet eggs</green>",
+)

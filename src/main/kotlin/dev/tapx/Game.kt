@@ -79,12 +79,12 @@ class Game(var d: PlayerData, private val events: GameEvents) {
     fun bossHp(stage: Int) = monsterHp(stage) * 6 * (1 - 0.04 * art("crown")) * (if (isLordStage(stage)) 3.0 else 1.0)
     fun goldMult() = (1 + 0.25 * art("idol")) * (1 + gearBonus("gold")) * (1 + petBonus("gold")) * (1 + 0.1 * st("r_greed")) *
         (if (owns("vip_gold")) 2.0 else 1.0) * (if (buffOn("golden_hour")) 2.0 else 1.0) *
-        ev("gold") * (rank()?.gold ?: 1.0) * pass("global2x", 2.0) * (if (d.discordLinked) 1.25 else 1.0) * (1 + 0.06 * tr("t_gold")) *
+        ev("gold") * (rank()?.gold ?: 1.0) * pass("global2x", 2.0) * (if (d.discordLinked) LINK_GOLD else 1.0) * (1 + 0.06 * tr("t_gold")) *
         (if (buffOn("midas")) skillPower("midas", skillLvl("midas")) else 1.0)
     fun killGold(stage: Int) = ceil(monsterHp(stage) * 0.2) * goldMult()
 
     private fun allDamageMult() = (1 + 0.25 * art("blade")) * (1 + 0.1 * st("w_vets")) * (if (owns("double_dmg")) 2.0 else 1.0) *
-        (if (buffOn("surge")) 2.0 else 1.0) * ev("damage") * (rank()?.damage ?: 1.0) * pass("global2x", 2.0)
+        (if (buffOn("surge")) 2.0 else 1.0) * ev("damage") * (rank()?.damage ?: 1.0) * pass("global2x", 2.0) * (if (d.discordLinked) LINK_DAMAGE else 1.0)
     private fun bossDamageMult() = 1 + petBonus("boss") + 0.1 * st("k_bane") + 0.1 * art("slayer") + (if (owns("boss_slayer")) 0.25 else 0.0) + 0.1 * tr("t_boss")
 
     fun heroMilestoneMult(lvl: Int) = HERO_MILESTONES.filter { lvl >= it.first }.fold(1.0) { m, x -> m * x.second }
@@ -112,13 +112,13 @@ class Game(var d: PlayerData, private val events: GameEvents) {
         (if (buffOn("eagle")) skillPower("eagle", skillLvl("eagle")) / 100 else 0.0))
     fun critMult() = 8 * (1 + 0.5 * art("fang")) * (1 + gearBonus("crit")) * (1 + petBonus("crit")) * (1 + 0.25 * st("k_heavy")) * pass("crit_master", 1.5) * (1 + 0.1 * tr("t_crit"))
     fun bossTime() = BOSS_TIME + 2 * art("hourglass") + (if (owns("boss_slayer")) 10 else 0)
-    fun maxMana() = 50 + 5 * art("crystal") + 5 * st("s_deep") + (if (owns("mana_well")) 25 else 0) + 3 * tr("t_mana") + (rank()?.mana ?: 0)
+    fun maxMana() = 50 + 5 * art("crystal") + 5 * st("s_deep") + (if (owns("mana_well")) 25 else 0) + 3 * tr("t_mana") + (rank()?.mana ?: 0) + (if (d.discordLinked) LINK_MANA else 0)
     fun manaRegen() = (1.0 / 3) * (1 + 0.1 * art("crystal")) * (1 + petBonus("mana")) * (1 + 0.1 * st("s_flow")) * ev("mana") * pass("arcane_flow", 2.0) * (1 + 0.05 * tr("t_mana"))
     fun spellDuration() = 30.0 + 4 * art("tome") + 3 * st("s_long")
     fun thunderMult() = skillPower("thunder", skillLvl("thunder")) * (1 + 0.25 * st("s_storm") + 0.4 * art("totem") + petBonus("thunder"))
     private fun autoTapRate() =
         (if (buffOn("frenzy")) skillPower("frenzy", skillLvl("frenzy")) else 0.0) + (if (buffOn("phantom")) 6.0 else 0.0) + shopLevel("auto_tap") +
-            (rank()?.autoTaps ?: 0)
+            (rank()?.autoTaps ?: 0) + (if (d.discordLinked) LINK_AUTO_TAPS else 0)
     fun mimicChance() = (0.025 + 0.01 * art("key") + 0.005 * st("r_mimic")) * ev("luck") * pass("lucky", 2.0)
     fun skipChance() = 0.02 * art("boots") + 0.01 * st("r_warp")
     fun wispRate() = (1 + 0.08 * art("lantern")) * ev("luck") * pass("lucky", 2.0)

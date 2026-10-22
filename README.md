@@ -153,6 +153,13 @@ same tags plus a stats card on hover. Default Discord invite: discord.gg/drillne
 - **Store**: `/payment <player> <usd> [package]` (thank-you message, jingle, GG reward, fills the piggy bank) and
   `/flashsale <percent> <duration>` (e.g. `30 2h`) / `/flashsale stop` for your web store's console commands.
 
+**Discord linking (same bot as DrillSim)** - `/link` gives a code that players DM to the DrillSim bot; `/unlink`,
+`/discord`. TapX's DiscordSRV runs on DrillSim's bot token and shares DrillSim's MySQL link database, so a link on either
+server counts on both and the bot answers once: use `setup/discordsrv-config.yml` as `plugins/DiscordSRV/config.yml`
+(paste the bot token and the Jdbc lines from DrillSim's config, and give DrillSim's DiscordSRV the same Jdbc lines).
+Rewards while linked and in the Discord server: x1.5 gold, x1.25 damage, +1 auto tap, +10 max mana, a ✔ in chat, and
+a one-time 10 gems + 5 pet eggs (`discord.*` in config.yml: invite, bot-name, require-in-server, reminder-minutes).
+
 **Ranks and gamepasses (admin)**
 
 | Command | What it does |

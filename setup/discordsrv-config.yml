@@ -1,0 +1,181 @@
+# DiscordSRV config for the TapX server: it runs on the SAME bot as DrillSim, so players still DM the
+# DrillSim bot to link. Put this file at plugins/DiscordSRV/config.yml on the TapX server.
+# Lines marked "TAPX:" are the ones changed from DiscordSRV's defaults. Everything else is default.
+#
+# How linking works with two servers on one bot:
+#  - Both servers' DiscordSRV use the same bot token and the same MySQL link database (the Jdbc lines below).
+#    A link made on either server counts on both, and codes from TapX's /link are stored in that database.
+#  - Only DrillSim's DiscordSRV answers DMs (MinecraftDiscordAccountLinkedUsePM is false here), so the bot
+#    replies once. DrillSim's DiscordSRV must use the same Jdbc lines too (copy them into its config).
+#  - No MySQL? Set MinecraftDiscordAccountLinkedUsePM to true and remove the Jdbc lines: linking then works
+#    per server (players link once on each), and the other server's DiscordSRV may also answer "invalid code".
+#  - TapX itself gives the link rewards (config.yml "discord:"), so no console commands are needed here.
+
+# Don't touch pls
+ConfigVersion: 1.30.5
+
+# TAPX: copy BotToken from DrillSim's plugins/DiscordSRV/config.yml (the exact same token).
+# You must restart your server after changing this option
+BotToken: "PASTE_DRILLSIMS_BOT_TOKEN_HERE"
+
+# TAPX: TapX's own chat channel. Make a #tapx-chat channel and put its ID here, or leave the zeros to not
+# relay TapX chat. Don't use DrillSim's chat channel ID, or both servers' chats get mixed.
+# Run "/discord reload" after changing this option to apply
+Channels: {"global": "000000000000000000"}
+
+# TAPX: blank = no console channel (so TapX's console doesn't go to DrillSim's console channel).
+DiscordConsoleChannelId: ""
+
+# TAPX: same invite as DrillSim
+DiscordInviteLink: "https://discord.gg/drillnetwork"
+
+# Experiments
+# These features are not fully optimized; use at your own risk
+
+# TAPX: the shared link database. Use the SAME values in DrillSim's DiscordSRV config.
+# JDBC (MySQL/MariaDB)
+Experiment_JdbcAccountLinkBackend: "jdbc:mysql://HOST:PORT/DATABASE?autoReconnect=true&useSSL=false"
+Experiment_JdbcTablePrefix: "discordsrv"
+Experiment_JdbcUsername: "username"
+Experiment_JdbcPassword: "password"
+
+# Webhook Delivery
+Experiment_WebhookChatMessageDelivery: false
+Experiment_WebhookChatMessageUsernameFormat: "%displayname%"
+Experiment_WebhookChatMessageFormat: "%message%"
+Experiment_WebhookChatMessageUsernameFromDiscord: false
+Experiment_WebhookChatMessageAvatarFromDiscord: false
+Experiment_WebhookChatMessageUsernameFilters: {}
+
+# Embed & webhook image/avatar url format
+# Leave blank to use a default value
+# Available placeholders: {texture} {username} {uuid} {uuid-nodashes} {size}
+AvatarUrl: ""
+
+# Reserializer
+# Converts formatting (bold, italics, underline, strikethrough) between Minecraft and Discord
+Experiment_MCDiscordReserializer_ToDiscord: false
+Experiment_MCDiscordReserializer_ToMinecraft: false
+Experiment_MCDiscordReserializer_InBroadcast: false
+
+# Other
+CancelConsoleCommandIfLoggingFailed: true
+ForcedLanguage: none
+ForceTLSv12: true
+NoopHostnameVerifier: false
+MaximumAttemptsForSystemDNSBeforeUsingFallbackDNS: 3
+TimestampFormat: EEE, d. MMM yyyy HH:mm:ss z
+DateFormat: yyyy-MM-dd
+# https://docs.discordsrv.com/config/#Timezone
+Timezone: default
+# MinecraftMentionSound: Whether a sound should be sent to the player in Minecraft when they are mentioned from Discord
+MinecraftMentionSound: true
+
+# Plugin hooks
+# You must restart your server after changing these options
+DisabledPluginHooks: []
+VentureChatBungee: false
+EnablePresenceInformation: false
+# TAPX: TapX formats chat with Paper's AsyncChatEvent
+UseModernPaperChatEvent: true
+
+# Game Information
+# TAPX: two servers share the bot's status, so use the SAME values as DrillSim's config here
+# (otherwise the status flips between the two).
+DiscordGameStatus: ["playing Minecraft"]
+DiscordOnlineStatus: ONLINE
+StatusUpdateRateInMinutes: 2
+
+# Chat channel information
+DiscordChatChannelDiscordToMinecraft: true
+DiscordChatChannelMinecraftToDiscord: true
+DiscordChatChannelTruncateLength: 256
+DiscordChatChannelTranslateMentions: true
+DiscordChatChannelAllowedMentions: [user, channel, emote]
+DiscordChatChannelEmojiBehavior: "name"
+DiscordChatChannelEmoteBehavior: "name"
+DiscordChatChannelPrefixRequiredToProcessMessage: ""
+DiscordChatChannelPrefixActsAsBlacklist: false
+DiscordChatChannelRolesAllowedToUseColorCodesInChat: ["Developer", "Owner", "Admin", "Moderator"]
+DiscordChatChannelBroadcastDiscordMessagesToConsole: true
+DiscordChatChannelRequireLinkedAccount: false
+DiscordChatChannelBlockBots: false
+DiscordChatChannelBlockWebhooks: true
+DiscordChatChannelBlockedIds: ["000000000000000000", "000000000000000000", "000000000000000000"]
+DiscordChatChannelBlockedRolesAsWhitelist: false
+DiscordChatChannelBlockedRolesIds: ["000000000000000000", "000000000000000000", "000000000000000000"]
+DiscordChatChannelRolesSelectionAsWhitelist: false
+DiscordChatChannelRolesSelection: ["Don't show me!", "Misc role"]
+DiscordChatChannelRoleAliases: {"Developer": "Dev"}
+
+# Console channel information
+DiscordConsoleChannelLogRefreshRateInSeconds: 5
+DiscordConsoleChannelUsageLog: "Console-%date%.log"
+DiscordConsoleChannelBlacklistActsAsWhitelist: false
+DiscordConsoleChannelBlacklistedCommands: ["?", "op", "deop", "execute"]
+DiscordConsoleChannelFilters: {".*(?i)async chat thread.*": "", ".*There are \\d+ (?:of a max of|out of maximum) \\d+ players online.*": ""}
+DiscordConsoleChannelLevels: [info, warn, error]
+DiscordConsoleChannelUseCodeBlocks: true
+DiscordConsoleChannelBlockBots: true
+
+# Chat channel command execute command
+# TAPX: off, so "!c" commands in a shared channel don't run on both servers.
+DiscordChatChannelConsoleCommandEnabled: false
+DiscordChatChannelConsoleCommandNotifyErrors: true
+DiscordChatChannelConsoleCommandPrefix: "!c"
+DiscordChatChannelConsoleCommandRolesAllowed: ["Owner", "Developer"]
+DiscordChatChannelConsoleCommandWhitelist: ["say", "lag", "tps"]
+DiscordChatChannelConsoleCommandWhitelistBypassRoles: ["Owner", "Developer"]
+DiscordChatChannelConsoleCommandWhitelistActsAsBlacklist: false
+DiscordChatChannelConsoleCommandExpiration: 0
+DiscordChatChannelConsoleCommandExpirationDeleteRequest: true
+
+# Chat channel player list command
+# TAPX: off, so "playerlist" isn't answered twice by the shared bot.
+DiscordChatChannelListCommandEnabled: false
+DiscordChatChannelListCommandMessage: "playerlist"
+DiscordChatChannelListCommandExpiration: 10
+DiscordChatChannelListCommandExpirationDeleteRequest: true
+
+# Chat channel blacklisted phrases & regex
+DiscordChatChannelGameFilters: {}
+DiscordChatChannelDiscordFilters: {".*Online players \\(.*": "", ".*\\*\\*No online players\\*\\*.*": ""}
+
+# Channel topic updater settings
+ChannelTopicUpdaterChannelTopicsAtShutdownEnabled: false
+ChannelTopicUpdaterRateInMinutes: 10
+
+# Channel Updater
+# TAPX: none (DrillSim's DiscordSRV already renames its channels).
+ChannelUpdater: []
+
+# Discord canned responses
+# TAPX: none, so the shared bot doesn't answer "!ip" twice.
+DiscordCannedResponses: {}
+
+# Minecraft to Discord account linking
+# TAPX: rewards are given by TapX itself. The role is the same as DrillSim's.
+MinecraftDiscordAccountLinkedConsoleCommands: []
+MinecraftDiscordAccountUnlinkedConsoleCommands: []
+MinecraftDiscordAccountLinkedRoleNameToAddUserTo: "Linked"
+MinecraftDiscordAccountLinkedAllowRelinkBySendingANewCode: false
+# TAPX: false = this server's DiscordSRV ignores DMs; DrillSim's DiscordSRV reads the code from the shared
+# database and links it, so the DrillSim bot answers once. (true if you don't use the shared database.)
+MinecraftDiscordAccountLinkedUsePM: false
+MinecraftDiscordAccountLinkedMessageDeleteSeconds: 0
+
+# Server watchdog
+# TAPX: off (it would post in the chat channel).
+ServerWatchdogEnabled: false
+ServerWatchdogTimeout: 30
+ServerWatchdogMessageCount: 3
+
+# HTTP proxy used for connecting to the Discord API
+# Leave this alone if you don't understand what it does
+ProxyHost: "example.com"
+ProxyPort: 1234
+ProxyUser: "USERNAME"
+ProxyPassword: "PASSWORD"
+
+# Debug information
+Debug: []

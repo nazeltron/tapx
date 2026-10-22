@@ -54,6 +54,12 @@ ranks:
 discord:
   # Invite link shown by /discord and /link. Linking itself needs the DiscordSRV plugin.
   invite: "https://discord.gg/drillnetwork"
+  # Name of the bot players DM their /link code to (TapX's DiscordSRV uses DrillSim's bot, see setup/discordsrv-config.yml).
+  bot-name: "DrillSim"
+  # Link rewards only while the player is also in the Discord server.
+  require-in-server: true
+  # Remind unlinked players every N minutes (0 = never).
+  reminder-minutes: 10
 piggy-bank:
   # Real money spent (from /tapx payment) that fills the piggy bank; when full everyone gets an event.
   goal-usd: 100
